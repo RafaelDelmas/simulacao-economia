@@ -1,0 +1,5 @@
+# Contexto de build mínimo — sem isso o `COPY . .` sobrescreve o node_modules
+node_modules
+dist
+.env
+*.log

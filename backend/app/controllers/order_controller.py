@@ -1,0 +1,114 @@
+from sqlalchemy.orm import Session
+
+from app.core.exceptions import ConflictError, NotFoundError
+from app.core.market.orderbook import order_book
+from app.models.commodity import Commodity
+from app.models.order import Order
+from app.models.position import Position
+from app.models.user import User
+from app.schemas.order import MyOrdersOut, OrderCreate, OrderOut
+
+
+class OrderController:
+    """Camada de controle: gestão de ordens no order book."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create(self, payload: OrderCreate, user_id: int | None = None) -> OrderOut:
+        # Verifica se a commodity existe
+        commodity = self.db.get(Commodity, payload.commodity_id)
+        if commodity is None:
+            raise NotFoundError(f"Commodity {payload.commodity_id} não encontrada")
+
+        # Congelada pelo admin: mercado suspenso, sem ordem nova (nem de bot —
+        # o bot engine também filtra; aqui é a porta de entrada do jogador)
+        if commodity.is_frozen:
+            raise ConflictError(
+                f"{commodity.name} está suspenso pelo admin — mercado fechado"
+            )
+
+        # Regra do jogo: só compra quem tem saldo, só vende quem tem estoque
+        if user_id is not None:
+            self._check_trade(user_id, commodity, payload)
+
+        order = Order(
+            commodity_id=payload.commodity_id,
+            user_id=user_id,
+            side=payload.side,
+            quantity=payload.quantity,
+            executed_quantity=0.0,
+            price=payload.price,
+            filled=False,
+        )
+        self.db.add(order)
+        self.db.commit()
+        self.db.refresh(order)
+        # Entra no order book em memória para participar do matching
+        order_book.add(order)
+        return OrderOut.model_validate(order)
+
+    def _check_trade(
+        self, user_id: int, commodity: Commodity, payload: OrderCreate
+    ) -> None:
+        """Barra ordem que o jogador não tem condição de honrar."""
+        user = self.db.get(User, user_id)
+        if user is None:
+            return
+
+        if payload.side == "bid":
+            necessario = round(payload.quantity * payload.price, 2)
+            disponivel = float(user.balance or 0)
+            if necessario > disponivel + 1e-9:
+                raise ConflictError(
+                    f"Saldo insuficiente para esta compra "
+                    f"(disponível {disponivel:.2f}, necessário {necessario:.2f})"
+                )
+        else:
+            pos = (
+                self.db.query(Position)
+                .filter(Position.user_id == user_id)
+                .filter(Position.commodity_id == commodity.id)
+                .first()
+            )
+            estoque = float(pos.quantity) if pos is not None else 0.0
+            if payload.quantity > estoque + 1e-9:
+                raise ConflictError(
+                    f"Estoque insuficiente de {commodity.name} "
+                    f"(disponível {estoque:g}, oferta {payload.quantity:g})"
+                )
+
+    def list_mine(self, user_id: int) -> MyOrdersOut:
+        """Ordens do jogador: abertas (no book) e já executadas."""
+        base = self.db.query(Order).filter(Order.user_id == user_id)
+        abertas = (
+            base.filter(Order.filled == False, Order.quantity > 0)
+            .order_by(Order.created_at.desc())
+            .limit(100)
+            .all()
+        )
+        executadas = (
+            base.filter(Order.filled == True)
+            .order_by(Order.created_at.desc())
+            .limit(100)
+            .all()
+        )
+        return MyOrdersOut(
+            open=[OrderOut.model_validate(r) for r in abertas],
+            filled=[OrderOut.model_validate(r) for r in executadas],
+        )
+
+    def list_open(self, commodity_id: int | None = None, limit: int = 200) -> list[OrderOut]:
+        # quantity > 0: ordem zerada não é aberta (blindagem contra dados legados)
+        q = self.db.query(Order).filter(Order.filled == False, Order.quantity > 0)
+        if commodity_id is not None:
+            q = q.filter(Order.commodity_id == commodity_id)
+        rows = q.order_by(Order.created_at.desc()).limit(limit).all()
+        return [OrderOut.model_validate(r) for r in rows]
+
+    def list_filled(self, commodity_id: int | None = None, limit: int = 200) -> list[OrderOut]:
+        q = self.db.query(Order).filter(Order.filled == True)
+        if commodity_id is not None:
+            q = q.filter(Order.commodity_id == commodity_id)
+        rows = q.order_by(Order.created_at.desc()).limit(limit).all()
+        return [OrderOut.model_validate(r) for r in rows]

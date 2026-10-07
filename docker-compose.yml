@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: simulacao-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-simulacao}
+      POSTGRES_USER: ${POSTGRES_USER:-simulacao}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-simulacao}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-simulacao} -d ${POSTGRES_DB:-simulacao}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    container_name: simulacao-backend
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-simulacao}
+      DB_USER: ${POSTGRES_USER:-simulacao}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-simulacao}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      JWT_SECRET: ${JWT_SECRET:-troque-este-segredo-em-producao}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-720}
+    ports:
+      - "3100:3100"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    container_name: simulacao-frontend
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "3200:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

@@ -1,0 +1,8 @@
+# Contexto de build mínimo — fora disso é peso morto na imagem
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.env
+*.log
