@@ -41,8 +41,12 @@ services:
     container_name: simulacao-frontend
     build: ./frontend
     restart: unless-stopped
+    # Container escuta em 3200 (mesma porta do host) — Coolify/ proxy aponta
+    # pra porta interna; expose é só documentação, o que vale é o listen.
+    expose:
+      - "3200"
     ports:
-      - "3200:80"
+      - "3200:3200"
     depends_on:
       - backend
 
