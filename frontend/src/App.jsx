@@ -14,6 +14,7 @@ import Commodity from "./components/Commodity";
 import Login from "./components/Login";
 import Market from "./components/Market";
 import Portfolio from "./components/Portfolio";
+import Producers from "./components/Producers";
 import Users from "./components/Users";
 
 const ABA_PADRAO = "mercado";
@@ -42,6 +43,7 @@ export default function App() {
     points: {},
     ticker: [],
     mine: { open: [], filled: [] },
+    produtoras: null,
   });
   const [book, setBook] = useState(null);
   const [aviso, setAviso] = useState("");
@@ -78,6 +80,14 @@ export default function App() {
     } catch (e) {
       if (semSessao()) return;
       setAviso(e.message || "Sem conexão com o backend.");
+    }
+    // Indústria: separado de propósito — se /produtoras falhar (backend
+    // antigo, por exemplo), o mercado e a carteira não caem junto.
+    try {
+      const produtoras = await getJSON("/produtoras");
+      setDados((d) => ({ ...d, produtoras }));
+    } catch {
+      // aba de indústria fica no "carregando" e o resto segue
     }
     // Rede de segurança da manchete: se o WS caiu, o polling pega a última
     // carta emitida (mesmo dedup por emitido_em do WS).
@@ -353,6 +363,66 @@ export default function App() {
     [carregar, mostrarToast],
   );
 
+  /* -------------------------------------------- ações das produtoras -- */
+
+  const comprarProdutora = useCallback(
+    async (commodityId) => {
+      try {
+        const p = await postJSON("/produtoras/comprar", { commodity_id: commodityId });
+        mostrarToast(`${p.emoji} ${p.nome} comprada!`, "ok");
+        carregar();
+        return true;
+      } catch (e) {
+        mostrarToast(e.message || "Não foi possível comprar.", "err");
+        return false;
+      }
+    },
+    [carregar, mostrarToast],
+  );
+
+  /** Um clique: devolve o resultado pra UI animar (floater) sem esperar o poll. */
+  const produzirProdutora = useCallback(
+    async (producerId) => {
+      try {
+        const r = await postJSON(`/produtoras/${producerId}/produzir`);
+        // Saldo e carteira mudam junto — aplica na hora (o poll de 4s
+        // re-sincroniza o resto: posição com preço médio, etc).
+        setDados((d) => ({
+          ...d,
+          me: d.me ? { ...d.me, balance: r.saldo } : d.me,
+          produtoras: d.produtoras
+            ? {
+                ...d.produtoras,
+                minhas: d.produtoras.minhas.map((p) =>
+                  p.id === r.produzida.id ? r.produzida : p,
+                ),
+              }
+            : d.produtoras,
+        }));
+        return r;
+      } catch (e) {
+        mostrarToast(e.message || "Não foi possível produzir.", "err");
+        return null;
+      }
+    },
+    [mostrarToast],
+  );
+
+  const melhorarProdutora = useCallback(
+    async (producerId) => {
+      try {
+        const p = await postJSON(`/produtoras/${producerId}/melhorar`);
+        mostrarToast(`${p.emoji} ${p.nome} subiu pro nível ${p.nivel}! 🚀`, "ok");
+        carregar();
+        return true;
+      } catch (e) {
+        mostrarToast(e.message || "Não foi possível melhorar.", "err");
+        return false;
+      }
+    },
+    [carregar, mostrarToast],
+  );
+
   function sair() {
     clearTimeout(timerToast.current);
     clearSession();
@@ -404,6 +474,7 @@ export default function App() {
 
   const abas = [
     { id: "mercado", icone: "🏪", rotulo: "Mercado" },
+    { id: "industria", icone: "🏭", rotulo: "Indústria" },
     { id: "carteira", icone: "💼", rotulo: "Carteira" },
     ...(usuario.is_admin
       ? [{ id: "admin", icone: "🛠️", rotulo: "Admin" }]
@@ -513,6 +584,14 @@ export default function App() {
             me={dados.me || usuario}
             positions={dados.positions}
             onOpen={abrirCommodity}
+          />
+        ) : aba === "industria" ? (
+          <Producers
+            estado={dados.produtoras}
+            me={dados.me || usuario}
+            onComprar={comprarProdutora}
+            onProduzir={produzirProdutora}
+            onMelhorar={melhorarProdutora}
           />
         ) : aba === "carteira" ? (
           <Portfolio

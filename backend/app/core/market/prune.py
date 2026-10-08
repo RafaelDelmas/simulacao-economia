@@ -154,7 +154,14 @@ def prune_tudo(order_book: OrderBook, *, limpar_abertas: bool = False) -> dict:
 
 
 async def prune_loop(order_book: OrderBook) -> None:
-    """Roda `prune_orders` periodicamente, sem travar o event loop."""
+    """Roda `prune_orders` periodicamente, sem travar o event loop.
+
+    Junto vai a varredura de manutenção das produtoras (`produtores_tick`):
+    é manutenção de banco do mesmo jeito — cobra o dia vencido e para as
+    produtoras inadimplentes. Throttle próprio (varredura_segundos do JSON).
+    """
+    from app.core.market.produtoras import produtoras as produtores_manager
+
     intervalo = max(5, settings.prune_intervalo_segundos)
     while True:
         await asyncio.sleep(intervalo)
@@ -172,3 +179,6 @@ async def prune_loop(order_book: OrderBook) -> None:
             stats["ticks_removidos"],
             stats["orders_total"],
         )
+        # Manutenção das produtoras: exceção logada dentro de produtores_tick
+        # (não pode derrubar o prune nem o loop).
+        await asyncio.to_thread(produtores_manager.produtores_tick)

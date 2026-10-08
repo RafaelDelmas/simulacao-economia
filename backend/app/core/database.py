@@ -37,35 +37,38 @@ def init_db() -> None:
     from app.models import Commodity, Item, Order, User  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
-    # Migrações idempotentes de colunas novas (create_all não altera tabela pronta)
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
-                "balance NUMERIC(14,2) NOT NULL DEFAULT 0"
+    # Migrações idempotentes de colunas novas (create_all não altera tabela
+    # pronta). Só no Postgres: a sintaxe `ADD COLUMN IF NOT EXISTS` é dele, e
+    # em SQLite (testes offline) a tabela nasce completa pelo create_all.
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                    "balance NUMERIC(14,2) NOT NULL DEFAULT 0"
+                )
             )
-        )
-        conn.execute(
-            text(
-                "ALTER TABLE commodities ADD COLUMN IF NOT EXISTS "
-                "is_frozen BOOLEAN NOT NULL DEFAULT FALSE"
+            conn.execute(
+                text(
+                    "ALTER TABLE commodities ADD COLUMN IF NOT EXISTS "
+                    "is_frozen BOOLEAN NOT NULL DEFAULT FALSE"
+                )
             )
-        )
-        # Linhas legadas ficam com 0 (a quantidade original se perdeu quando a
-        # ordem zerou); ordens novas acumulam certo a cada match.
-        conn.execute(
-            text(
-                "ALTER TABLE orders ADD COLUMN IF NOT EXISTS "
-                "executed_quantity DOUBLE PRECISION NOT NULL DEFAULT 0"
+            # Linhas legadas ficam com 0 (a quantidade original se perdeu quando a
+            # ordem zerou); ordens novas acumulam certo a cada match.
+            conn.execute(
+                text(
+                    "ALTER TABLE orders ADD COLUMN IF NOT EXISTS "
+                    "executed_quantity DOUBLE PRECISION NOT NULL DEFAULT 0"
+                )
             )
-        )
-        # Combo de vendas lucrativas (UX): linha legada começa em 0.
-        conn.execute(
-            text(
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
-                "streak INTEGER NOT NULL DEFAULT 0"
+            # Combo de vendas lucrativas (UX): linha legada começa em 0.
+            conn.execute(
+                text(
+                    "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                    "streak INTEGER NOT NULL DEFAULT 0"
+                )
             )
-        )
     # Sessão ORM para ops de seed (balance admin etc.)
     db = SessionLocal()
     try:

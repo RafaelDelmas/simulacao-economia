@@ -12,7 +12,7 @@ from app.core.error_handlers import register_exception_handlers
 from app.core.market.events import event_bus
 from app.core.market.orderbook import order_book
 from app.core.market.prune import prune_loop, prune_tudo
-from app.routers import health_router, item_router, user_router, commodity_router, news_router, order_router, auth_router, position_router
+from app.routers import health_router, item_router, user_router, commodity_router, news_router, order_router, auth_router, position_router, produtoras_router
 
 # Logs da aplicação (INFO em diante). Sem isso nada daqui chega ao log do uvicorn.
 # O SQLAlchemy loga cada SQL em INFO: sem segurar, o arquivo inundaria.
@@ -132,6 +132,7 @@ app.include_router(commodity_router.router, prefix="/api")
 app.include_router(news_router.router, prefix="/api")
 app.include_router(order_router.router, prefix="/api")
 app.include_router(position_router.router, prefix="/api")
+app.include_router(produtoras_router.router, prefix="/api")
 
 
 # --- WebSocket market ---

@@ -21,6 +21,9 @@ services:
     container_name: simulacao-backend
     build: ./backend
     restart: unless-stopped
+    # JSON de produtoras editável sem rebuild (hot-reload via mtime).
+    volumes:
+      - ./backend/produtoras.json:/app/produtoras.json
     environment:
       DB_HOST: db
       DB_PORT: "5432"

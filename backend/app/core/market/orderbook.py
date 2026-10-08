@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from typing import Dict, List, Tuple
 
 from app.core.database import SessionLocal
+from app.core.market.estoque import bump_position
 from app.core.market.events import event_bus
 from app.models.commodity import Commodity
 from app.models.order import Order
@@ -244,61 +245,12 @@ class OrderBook:
     def _bump_position(
         sess, user_id: int, commodity_id: int, delta: float, price: float
     ) -> None:
-        """Atualiza o estoque e o preço médio do usuário nesta commodity."""
-        pos = (
-            sess.query(Position)
-            .filter(Position.user_id == user_id)
-            .filter(Position.commodity_id == commodity_id)
-            .first()
-        )
-        if pos is None:
-            sess.add(
-                Position(
-                    user_id=user_id,
-                    commodity_id=commodity_id,
-                    quantity=round(delta, 6),
-                    avg_price=round(price, 4),
-                )
-            )
-            if delta < -1e-9:
-                # Sem linha anterior não dá pra ter estoque a entregar:
-                # `_check_trade` na criação deveria ter barrado.
-                logger.warning(
-                    "estoque negativo sem linha anterior: user=%s "
-                    "commodity=%s delta=%s",
-                    user_id,
-                    commodity_id,
-                    delta,
-                )
-            sess.flush()  # a próxima chamada precisa enxergar a linha
-            return
+        """Atualiza o estoque e o preço médio — delega ao helper compartilhado.
 
-        antes = float(pos.quantity or 0)
-        novo = round(antes + delta, 6)
-        if abs(novo) < 1e-9:
-            novo = 0.0
-        if delta > 0 and antes <= 0:
-            pos.avg_price = round(price, 4)  # abrindo posição (ou cobrindo venda a descoberto)
-        elif delta > 0 and novo > 0:
-            pos.avg_price = round(
-                (float(pos.avg_price or 0) * antes + price * delta) / novo, 4
-            )
-        elif novo == 0:
-            pos.avg_price = 0.0  # zerou a posição
-        # venda com estoque positivo: o preço médio de compra permanece
-        pos.quantity = novo
-        if novo < -1e-9:
-            # Rede de segurança (mesma do saldo): a checagem na criação é o
-            # muro — aqui só avisamos se algum outro caminho furou.
-            logger.warning(
-                "estoque negativo após liquidação: user=%s commodity=%s "
-                "quantity=%s delta=%s",
-                user_id,
-                commodity_id,
-                novo,
-                delta,
-            )
-        sess.flush()
+        `app.core.market.estoque.bump_position` é a fonte única da fórmula
+        (a produção das produtoras credita estoque pela mesma regra).
+        """
+        bump_position(sess, user_id, commodity_id, delta, price)
 
     @staticmethod
     def _lucro_realizado(

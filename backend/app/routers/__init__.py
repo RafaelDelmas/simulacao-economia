@@ -7,6 +7,7 @@ from app.routers import (
     news_router,
     order_router,
     position_router,
+    produtoras_router,
     user_router,
 )
 
@@ -18,5 +19,6 @@ __all__ = [
     "news_router",
     "order_router",
     "position_router",
+    "produtoras_router",
     "user_router",
 ]

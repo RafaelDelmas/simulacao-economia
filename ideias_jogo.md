@@ -163,6 +163,23 @@ em saldo/estoque por tick precisa do mesmo cuidado do `_check_trade` + log no
 por tick se parado, ou o dinheiro enfraquece (a `tax.applied` já infla os preços).
 *Ensina:* alternativa de oportunidade e por que dinheiro parado também tem custo.
 
+**39. ✅ Produtoras (clicker de estoque) — FEITO** — segunda forma de conseguir
+estoque além de comprar no book: o jogador compra o meio de produção da
+commodity (uma por commodity, níveis 1–5), trabalha nele (clique = lote) e paga
+pra mantê-lo vivo. *Ensina:* custo de oportunidade, capital de giro e a
+diferença entre estoque comprado e estoque produzido — saturar o mercado derruba
+o preço e produzir vira prejuízo. *Diverte:* vira fábrica, não só mercado.
+*Como ficou:* `backend/produtoras.json` (todos os valores editáveis sem
+reiniciar — hot-reload por mtime, JSON inválido mantém a última versão boa),
+`core/market/produtoras.py` + `controllers/produtoras_controller.py`, tabela
+`producers`, 4 rotas `POST/GET /api/produtoras*`, aba 🏭 Indústria no frontend
+(botão gigante com anel de cooldown, barra de energia, cap diário, floater
+"+3 ☕"). 4 travas de dificuldade: insumo (~80% do preço nominal por unidade,
+margem ~20%), energia (rajada de 5 cliques e depois a regeneração), cap diário
+e manutenção automática (sem saldo → inadimplente, dívida de 1 dia que não
+compõe e é quitada sozinha quando o saldo cobrir). Ideia 29 (cadeia de
+produção: receitas com 2+ insumos) continua pendente.
+
 ## 8. Bots com personalidade
 
 **33. 🔥 Bots temáticos** — "Siderúrgica União" compra carvão sempre que barato;

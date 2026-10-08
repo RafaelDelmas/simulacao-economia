@@ -26,6 +26,7 @@ Stack do backend (pinado em `backend/requirements.txt`, Python 3.12):
 ├── backend/
 │   ├── Dockerfile            # multi-stage, python:3.12-slim, porta 3100
 │   ├── requirements.txt      # versões pinadas — não "atualize por default"
+│   ├── produtoras.json       # ⚙️ regras das 🏭 produtoras (hot-reload p/ mtime)
 │   └── app/
 │       ├── main.py           # app, CORS, lifespan (seed + engines), rotas, WS
 │       ├── core/
@@ -36,7 +37,9 @@ Stack do backend (pinado em `backend/requirements.txt`, Python 3.12):
 │       │   ├── exceptions.py     # AppError e subclasses (404/409/401/403)
 │       │   ├── error_handlers.py # AppError -> JSON {"detail": ...}
 │       │   └── market/           # orderbook, engine, bots, events, taxes,
-│       │                         # regimes, news (cartas_evento.json)
+│       │                         # regimes, news (cartas_evento.json),
+│       │                         # produtoras.py (clicker de estoque),
+│       │                         # estoque.py (bump_position compartilhado)
 │       ├── routers/          # camada HTTP (validação + status code)
 │       ├── controllers/      # regras de negócio
 │       ├── models/           # SQLAlchemy (tabelas)
@@ -45,11 +48,12 @@ Stack do backend (pinado em `backend/requirements.txt`, Python 3.12):
     ├── vite.config.js        # proxy /api -> http://localhost:3100
     ├── nginx.conf            # em produção: proxy /api -> http://backend:3100
     └── src/
-        ├── App.jsx           # shell, abas (mercado/carteira/admin), polling
+        ├── App.jsx           # shell, abas (mercado/indústria/carteira/admin),
+        │                     # polling
         ├── api.js            # fetch + Bearer (getJSON/postJSON/patchJSON/delJSON)
         ├── styles.css        # tema dark, mobile-first
-        └── components/       # Login, Market, Commodity, Portfolio, Users,
-                              # AdminMarket, Chart (PriceChart/Sparkline)
+        └── components/       # Login, Market, Commodity, Portfolio, Producers,
+                              # Users, AdminMarket, Chart (PriceChart/Sparkline)
 ```
 
 **Arquitetura em camadas:** `router (HTTP) → controller (regra) → model/schema (dados)`.
@@ -118,7 +122,16 @@ curl -s http://localhost:3100/api/commodities
 
 Não há testes automatizados no repositório. Se for criar, prefira
 `backend/tests/` com `pytest` + `fastapi.testclient` (o `TestClient` dispara o
-lifespan, então valida seed e engines também).
+lifespan, então valida seed e engines também). O `TestClient` exige `httpx`
+(Fora do `requirements.txt` — instale só no venv com
+`~/.local/bin/uv pip install --python .venv/bin/python httpx`).
+
+Padrão de teste offline já usado (SQLite, sem Postgres nem rede):
+`cfg_mod.Settings.database_url = property(lambda s: "sqlite:///...")` **antes**
+de importar `app.core.database` (o engine é criado no import) e um
+`TestClient(app)` **sem `with`** para não disparar lifespan (nada de bots
+gritando no SQLite). Exemplo completo: `/tmp/opencode/teste_produtoras.py`
+(62 checks — compra, clique, sweep de manutenção, JSON quente).
 
 ## API
 
@@ -145,6 +158,10 @@ lifespan, então valida seed e engines também).
 | GET    | `/api/orders/open`, `/filled` | —         | `?commodity_id=&limit=` (limit 1..1000, padrão 200) |
 | POST   | `/api/orders/prune`         | **admin**   | roda o prune na hora (TTL das abertas — bot 5 min / jogador 10 h — + histórico/ticks) |
 | GET    | `/api/positions`            | Bearer      | carteira do jogador |
+| GET    | `/api/produtoras`           | Bearer      | catálogo (por commodity) + minhas, com energia/cap/dia/cooldown em epoch |
+| POST   | `/api/produtoras/comprar`   | Bearer      | `{commodity_id}` compra a produtora. **404** commodity inexistente, **409** já tem / congelada / saldo insuficiente |
+| POST   | `/api/produtoras/{id}/produzir` | Bearer  | um clique = um lote (cobra insumo, energia, cooldown 1s e cap diário; **409** em cada travinha, commodity congelada ou produtora inadimplente) |
+| POST   | `/api/produtoras/{id}/melhorar` | Bearer  | sobe nível (custo ×1.5 ×2^n; **409** no nível máximo ou sem saldo) |
 | GET    | `/api/news`                 | —           | cartas de evento: config vigente, baralho, `proxima_em` e últimas disparadas (`ultimas[0]` = fallback do banner no polling) |
 | POST   | `/api/news/disparar`        | **admin**   | mestre de cena: dispara uma carta agora (`{id?}`; sem id sorteia como o automático). **404** id inexistente, **409** sem alvo |
 | GET/POST/PUT/DELETE | `/api/items`    | Bearer      | CRUD de exemplo |
@@ -155,16 +172,22 @@ Docs interativos: `/docs` e `/openapi.json`.
 ## O que roda no boot (`lifespan` em `app/main.py`)
 
 1. `init_db()` — cria as tabelas (`Base.metadata.create_all`) + migrações
-   idempotentes: `ALTER TABLE users ADD COLUMN IF NOT EXISTS balance`,
+   idempotentes **só no Postgres** (`engine.dialect.name == "postgresql"` — em
+   SQLite os `ALTER ... IF NOT EXISTS` dão erro de sintaxe e a tabela nasce
+   completa pelo `create_all`): `ALTER TABLE users ADD COLUMN IF NOT EXISTS balance`,
    `ALTER TABLE users ADD COLUMN IF NOT EXISTS streak` (combo 🔥 de vendas
    lucrativas), `ALTER TABLE commodities ADD COLUMN IF NOT EXISTS is_frozen` e
    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS executed_quantity` (linhas
    legadas ficam com 0 — a quantidade original se perdeu quando a ordem zerou).
+   A tabela `producers` (🏭) é nova, o `create_all` cria do zero — sem ALTER.
 2. `UserController.ensure_admin()` — cria o admin do `.env` se não existir.
 3. `CommodityController.seed_defaults()` — 5 commodities (Carvão, Aço, Trigo, Algodão, Café).
 4. Saldo inicial do admin (`jogo_inicial_saldo`) se estiver 0.
 5. `MarketEngine` + `BotEngine` em background, **compartilhando o mesmo `order_book`**
    (instância única exportada por `app/core/market/orderbook.py`).
+6. `prune_loop` (a cada `prune_intervalo_segundos`) roda junto
+   `produtoras.produtores_tick()` — varredura de manutenção das produtoras
+   (auto-throttled por `varredura_segundos` do `produtoras.json`).
 
 Em shutdown, o `finally` cancela a task do engine.
 
@@ -234,6 +257,19 @@ Em shutdown, o `finally` cancela a task do engine.
   FastAPI rodam na threadpool — com o antigo `asyncio.get_running_loop()` o
   disparo manual de manchete (`/api/news/disparar`) morria num `except
   RuntimeError` silencioso e a manchete nunca saía.
+- **🏭 Produtoras** (`market/produtoras.py` + `produtoras.json` na raiz do
+  backend): manager singleton com **config quente** (mtime checado no
+  `produtores_tick`, máx. 1x/5s; JSON inválido mantém a última versão boa) e
+  clamp dos valores em `_LIMITES` (JSON maluco não quebra a economia). Todas
+  as escritas travam na **ORDEM user → producer** (`with_for_update`, inclusive
+  na varredura) — nunca inverta. `produzir` chama `_rolar_dia` sob lock antes
+  das travas (cooldown/energia/capo/insumo) e **commita a rolagem antes de
+  cada `raise`** — senão a manutenção cobrada se perde no rollback do `get_db`.
+  Débitos checam saldo **antes** (nunca negativo); a produtora só **aumenta**
+  estoque via `bump_position` (`core/market/estoque.py`, compartilhado com o
+  order book). A varredura re-entra por `ativa = false` (não só `ciclo_em`
+  vencido) pra quitar dívida assim que o saldo cobrir. `dia_segundos` muda o
+  tempo de jogo — teste o sweep editando o JSON, não o código.
 
 ## Segurança / perfis
 

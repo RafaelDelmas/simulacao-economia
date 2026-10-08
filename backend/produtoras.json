@@ -1,0 +1,56 @@
+{
+  "_comentario": [
+    "🏭 Produtoras (clicker de estoque) — editável SEM reiniciar o backend.",
+    "Re-lido quando o mtime muda (checado a cada varredura, máx 1x/5s).",
+    "JSON inválido mantém a última versão boa e loga warning.",
+    "",
+    "Dificuldade = 4 travas somadas:",
+    "  1) insumo: cada clique CUSTA dinheiro (~0,8x o preço nominal por unidade)",
+    "     -> margem bruta ~20%; saturar o mercado derruba o preço e produzir",
+    "     vira prejuízo (oferta/demanda manda, não o clicker);",
+    "  2) energia: rajada de ~5 cliques, depois o ritmo é a regeneração;",
+    "  3) cap diário: o teto chega antes da paciência;",
+    "  4) manutenção diária automática: ocioso também paga; sem saldo a",
+    "     produtora PARA até quitar a dívida (saldo nunca fica negativo).",
+    "",
+    "produtores: entrada por NOME exato da commodity (igual às cartas de",
+    "evento). Commodity sem entrada aqui usa default: nome 'Produtora de X',",
+    "emoji 🏭 e custo_compra = custo_fracao_base x preço base."
+  ],
+  "config": {
+    "dia_segundos": 1200,
+    "varredura_segundos": 60,
+
+    "energia_max": 100,
+    "energia_por_clique": 20,
+    "energia_regen_por_segundo": 4.0,
+    "cooldown_segundos": 1.0,
+
+    "lote_base": 3.0,
+    "lote_nivel_fator": 1.5,
+    "lote_variacao": 0.25,
+    "cap_diario_base": 25.0,
+    "cap_nivel_fator": 1.5,
+
+    "insumo_fracao": 0.8,
+    "custo_fracao_base": 8.0,
+
+    "custo_melhoria_fracao": 1.5,
+    "custo_melhoria_fator": 2.0,
+    "nivel_max": 5,
+
+    "manutencao_fracao": 0.05,
+    "manutencao_nivel_fator": 1.8,
+    "manutencao_dias_cobranca_max": 2,
+
+    "jackpot_chance": 0.05,
+    "jackpot_fator": 3.0
+  },
+  "produtores": {
+    "Carvão": { "emoji": "⛏️", "nome": "Mina de Carvão", "custo_compra": 400 },
+    "Aço": { "emoji": "🏭", "nome": "Usina Siderúrgica", "custo_compra": 950 },
+    "Trigo": { "emoji": "🌾", "nome": "Fazenda de Trigo", "custo_compra": 1600 },
+    "Algodão": { "emoji": "🌱", "nome": "Lavoura de Algodão", "custo_compra": 650 },
+    "Café": { "emoji": "☕", "nome": "Cafezal", "custo_compra": 1200 }
+  }
+}
