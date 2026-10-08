@@ -45,9 +45,15 @@ export default function App() {
   const [book, setBook] = useState(null);
   const [aviso, setAviso] = useState("");
   const [toast, setToast] = useState(null);
+  // --- feed ao vivo do WebSocket (market.tick / regime / fomo / 🐋) ---
+  const [fomo, setFomo] = useState(null); // {commodity_id, titulo, fim}
+  const [destaques, setDestaques] = useState([]); // fills de baleia recentes
+  const [inflacao, setInflacao] = useState(1); // índice Σbase desde o boot
+  const [agora, setAgora] = useState(() => Date.now()); // pulso do contador
 
   const visivel = useRef(true);
   const timerToast = useRef(null);
+  const streakAnterior = useRef(undefined);
 
   const semSessao = () => !getSession();
 
@@ -145,6 +151,138 @@ export default function App() {
     timerToast.current = setTimeout(() => setToast(null), 3200);
   }, []);
 
+  /* --------------------------------------------- websocket ao vivo -- */
+
+  useEffect(() => {
+    if (!usuario) return;
+    let vivo = true;
+    let ws = null;
+    let retry = null;
+
+    const tratar = (data) => {
+      if (!vivo || !data) return;
+      if (data.type === "init") return;
+
+      if (data.timestamp && data.prices) {
+        // market.tick: preços ao vivo (3s) + índice de inflação + FOMO
+        setDados((d) => ({
+          ...d,
+          commodities: d.commodities.map((c) => {
+            const p = data.prices[c.id];
+            return p
+              ? { ...c, current_price: p.price, variation_24h: p.variation }
+              : c;
+          }),
+        }));
+        if (typeof data.inflacao_indice === "number") {
+          setInflacao(data.inflacao_indice);
+        }
+        setFomo(
+          data.fomo
+            ? {
+                commodity_id: data.fomo.commodity_id,
+                titulo: data.fomo.titulo,
+                fim: Date.now() + data.fomo.segundos_restantes * 1000,
+              }
+            : null,
+        );
+        return;
+      }
+
+      if (data.commodity_id !== undefined && data.regime) {
+        // market.regime: o chip do card muda na hora, sem esperar o polling
+        setDados((d) => ({
+          ...d,
+          commodities: d.commodities.map((c) =>
+            c.id === data.commodity_id ? { ...c, regime: data.regime } : c,
+          ),
+        }));
+        return;
+      }
+
+      if (data.titulo && data.tipo) {
+        // market.event (janela FOMO)
+        setFomo({
+          commodity_id: data.commodity_id,
+          titulo: data.titulo,
+          fim: Date.now() + data.segundos * 1000,
+        });
+        return;
+      }
+
+      if (data.rate_percent !== undefined) {
+        // tax.applied: a hora de agir (dinheiro parado derretendo)
+        mostrarToast(
+          `💸 Inflação de ${data.rate_percent}% aplicada — dinheiro parado perde valor`,
+          "err",
+        );
+        return;
+      }
+
+      if (data.bots_active !== undefined && data.destaques?.length) {
+        // bot.activity: fills de baleia (🐋) — entram no topo do feed
+        const novos = data.destaques.map((b) => ({
+          ...b,
+          recebidoEm: Date.now(),
+          chave: `${Date.now()}-${Math.random()}`,
+        }));
+        setDestaques((lista) => [...novos.reverse(), ...lista].slice(0, 8));
+      }
+    };
+
+    const conectar = () => {
+      if (!vivo) return;
+      const proto = window.location.protocol === "https:" ? "wss" : "ws";
+      try {
+        ws = new WebSocket(`${proto}://${window.location.host}/ws/market`);
+      } catch {
+        retry = setTimeout(conectar, 4000);
+        return;
+      }
+      ws.onmessage = (ev) => {
+        try {
+          tratar(JSON.parse(ev.data));
+        } catch {
+          // frame corrompido: ignora, o próximo tick corrige
+        }
+      };
+      // Caiu? Reconecta em 3s — o polling continua como rede de segurança.
+      ws.onclose = () => {
+        if (vivo) retry = setTimeout(conectar, 3000);
+      };
+    };
+    conectar();
+
+    return () => {
+      vivo = false;
+      clearTimeout(retry);
+      if (ws) {
+        ws.onclose = null;
+        ws.close();
+      }
+    };
+  }, [usuario, mostrarToast]);
+
+  /* ------------------------------------------------- combo 🔥 do streak -- */
+
+  useEffect(() => {
+    const s = dados.me?.streak;
+    if (s == null) return;
+    const antes = streakAnterior.current;
+    streakAnterior.current = s;
+    if (antes === undefined || antes === s) return;
+    if (s > antes) mostrarToast(`🔥 Combo de vendas lucrativas: x${s}`, "ok");
+    else if (s === 0) mostrarToast("💔 Combo perdido!", "err");
+  }, [dados.me?.streak, mostrarToast]);
+
+  /* --------------------------------------- contagem do banner FOMO -- */
+
+  useEffect(() => {
+    if (!fomo) return;
+    const id = setInterval(() => setAgora(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [fomo]);
+
   const enviarOrdem = useCallback(
     async (payload) => {
       try {
@@ -213,6 +351,20 @@ export default function App() {
   const posicao = dados.positions.find((p) => p.commodity_id === detalhe);
   const pontos = dados.points[detalhe] || [];
 
+  // Janela FOMO viva (o `agora` de 1s faz a contagem descer)
+  const fomoAtiva = fomo && fomo.fim > agora ? fomo : null;
+  const nomeFomo = fomoAtiva
+    ? dados.commodities.find((c) => c.id === fomoAtiva.commodity_id)?.name ||
+      "#?"
+    : "";
+  const segundosFomo = fomoAtiva
+    ? Math.max(0, Math.ceil((fomoAtiva.fim - agora) / 1000))
+    : 0;
+  // 🐋: só as fills dos últimos 20s (o polling re-renderiza e limpa as velhas)
+  const destaquesFrescos = destaques.filter(
+    (d) => Date.now() - d.recebidoEm < 20000,
+  );
+
   const abas = [
     { id: "mercado", icone: "🏪", rotulo: "Mercado" },
     { id: "carteira", icone: "💼", rotulo: "Carteira" },
@@ -251,6 +403,22 @@ export default function App() {
         </div>
       )}
 
+      {fomoAtiva && (
+        <div className="section" style={{ paddingBottom: 0 }}>
+          <button
+            className="fomo-banner"
+            onClick={() => abrirCommodity(fomoAtiva.commodity_id)}
+          >
+            <span className="fomo-ico">⚡</span>
+            <span className="fomo-txt">
+              <b>{fomoAtiva.titulo}</b> em {nomeFomo} — pressão de compra
+              forte!
+            </span>
+            <span className="fomo-timer num">{segundosFomo}s</span>
+          </button>
+        </div>
+      )}
+
       <main>
         {detalhe ? (
           commodity ? (
@@ -277,6 +445,8 @@ export default function App() {
             commodities={dados.commodities}
             points={dados.points}
             ticker={dados.ticker}
+            destaques={destaquesFrescos}
+            inflacao={inflacao}
             me={dados.me || usuario}
             positions={dados.positions}
             onOpen={abrirCommodity}
@@ -287,6 +457,7 @@ export default function App() {
             positions={dados.positions}
             commodities={dados.commodities}
             mine={dados.mine}
+            inflacao={inflacao}
             onOpen={abrirCommodity}
             onCancel={cancelarOrdem}
           />

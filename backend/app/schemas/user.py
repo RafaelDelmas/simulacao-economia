@@ -16,6 +16,7 @@ class UserOut(BaseModel):
     is_admin: bool
     is_active: bool
     balance: float  # saldo em dinheiro do jogador
+    streak: int = 0  # combo de vendas lucrativas (🔥 no frontend)
     created_at: datetime
 
 

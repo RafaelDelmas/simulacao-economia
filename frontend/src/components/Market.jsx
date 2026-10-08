@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { Sparkline } from "./Chart";
-import { brl, iconFor, num, pct, timeAgo } from "../api";
+import { brl, iconFor, num, pct, REGIME_LABEL, timeAgo } from "../api";
 
 /**
  * Tela principal: quanto você tem, o mercado inteiro e o que está acontecendo
@@ -11,6 +11,8 @@ export default function Market({
   commodities,
   points,
   ticker,
+  destaques,
+  inflacao,
   me,
   positions,
   onOpen,
@@ -58,6 +60,14 @@ export default function Market({
                 </span>
               </>
             )}
+            {inflacao > 1.0005 && (
+              <>
+                {" · "}
+                <span className="down" title="poder de compra desde o início da rodada">
+                  💸 {pct((inflacao - 1) * 100)}
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -94,6 +104,11 @@ export default function Market({
                   <div className="head">
                     <span className="icon">{iconFor(c.name)}</span>
                     <span className="name">{c.name}</span>
+                    {c.regime && c.regime !== "calmo" && (
+                      <span className={`badge regime ${c.regime}`}>
+                        {REGIME_LABEL[c.regime] || c.regime}
+                      </span>
+                    )}
                     {c.is_frozen && <span className="badge off">suspenso</span>}
                   </div>
 
@@ -131,13 +146,33 @@ export default function Market({
         </div>
 
         <div className="card">
-          {!ticker?.length ? (
+          {!ticker?.length && !destaques?.length ? (
             <div className="empty">
               <span className="big">🫧</span>
               Nenhuma negociação nos últimos segundos…
             </div>
           ) : (
             <div className="ticker">
+              {/* 🐋 baleias primeiro: o grande prêmio não pode se perder */}
+              {(destaques || []).map((d) => (
+                <div className="tick-row whale" key={d.chave}>
+                  <span className="emoji">🐋</span>
+                  <span className="what">
+                    {nomeDe(d, commodities)}{" "}
+                    <span className="qty">
+                      baleia {d.side === "bid" ? "comprou" : "vendeu"}{" "}
+                      {num(d.quantity, 0, 2)} un
+                    </span>
+                  </span>
+                  <span
+                    className={`val num ${d.side === "bid" ? "up" : "down"}`}
+                  >
+                    {brl(d.price)}
+                  </span>
+                  <span className="when">agora</span>
+                </div>
+              ))}
+
               {ticker.slice(0, 18).map((o) => (
                 <div className="tick-row" key={o.id}>
                   <span className="emoji">{iconFor(nomeDe(o, commodities))}</span>

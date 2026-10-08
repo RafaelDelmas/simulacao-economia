@@ -8,6 +8,7 @@ from app.core.exceptions import ConflictError, NotFoundError
 from app.core.market.engine import faixa_preco, limita_preco, preco_vivo
 from app.core.market.orderbook import order_book
 from app.core.market.prune import prune_orders
+from app.core.market.regimes import regimes
 from app.models.commodity import Commodity
 from app.models.order import Order
 from app.models.price_tick import PriceTick
@@ -28,12 +29,18 @@ class CommodityController:
     def __init__(self, db: Session):
         self.db = db
 
+    def _out(self, row: Commodity) -> CommodityOut:
+        """DTO da commodity com o regime atual (singleton em memória)."""
+        out = CommodityOut.model_validate(row)
+        out.regime = regimes.de(row.id)
+        return out
+
     def list(self) -> list[CommodityOut]:
         rows = self.db.query(Commodity).order_by(Commodity.name.asc()).all()
-        return [CommodityOut.model_validate(r) for r in rows]
+        return [self._out(r) for r in rows]
 
     def get(self, commodity_id: int) -> CommodityOut:
-        return CommodityOut.model_validate(self._row(commodity_id))
+        return self._out(self._row(commodity_id))
 
     def _row(self, commodity_id: int) -> Commodity:
         row = self.db.get(Commodity, commodity_id)
@@ -106,7 +113,7 @@ class CommodityController:
         self._refresh_display(c, manter_atual=True)
         self.db.commit()
         self.db.refresh(c)
-        return CommodityOut.model_validate(c)
+        return self._out(c)
 
     def set_frozen(
         self, commodity_id: int, payload: CommodityFreeze
@@ -117,7 +124,7 @@ class CommodityController:
         c.is_frozen = bool(payload.frozen)
         self.db.commit()
         self.db.refresh(c)
-        return CommodityOut.model_validate(c)
+        return self._out(c)
 
     def clear_book(
         self, commodity_id: int, payload: ClearBookIn | None = None
@@ -183,7 +190,7 @@ class CommodityController:
         self.db.add(commodity)
         self.db.commit()
         self.db.refresh(commodity)
-        return CommodityOut.model_validate(commodity)
+        return self._out(commodity)
 
     def seed_defaults(self) -> None:
         """Semente 5 commodities padrão dos anos 1920 se não existirem."""

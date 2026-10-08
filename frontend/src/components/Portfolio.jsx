@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { brl, iconFor, MAX_ORDENS_ABERTAS, num, timeAgo } from "../api";
+import { brl, iconFor, MAX_ORDENS_ABERTAS, num, pct, timeAgo } from "../api";
 
 /**
  * Carteira: quanto dinheiro você tem, quanto está em estoque e o que está
@@ -11,6 +11,7 @@ export default function Portfolio({
   positions,
   commodities,
   mine,
+  inflacao,
   onOpen,
   onCancel,
 }) {
@@ -21,6 +22,11 @@ export default function Portfolio({
   const custo = (positions || []).reduce((s, p) => s + (p.custo || 0), 0);
   const resultado = estoque - custo;
   const patrimonio = saldo + estoque;
+  const streak = Number(me?.streak || 0);
+  // Índice de preços da rodada (1 = sem inflação): o patrimônio "real" é o
+  // nominal deflacionado — quanto o dinheiro ainda compra de verdade.
+  const indice = Number(inflacao || 1);
+  const patrimonioReal = patrimonio / indice;
 
   const abertas = mine?.open || [];
   const executadas = (mine?.filled || []).slice(0, 12);
@@ -56,7 +62,21 @@ export default function Portfolio({
         <div className="balance-card">
           <div className="label">Patrimônio</div>
           <div className="value num">{brl(patrimonio)}</div>
-          <div className="sub num">estoque {brl(estoque)}</div>
+          <div className="sub num">
+            estoque {brl(estoque)}
+            {indice > 1.0005 && (
+              <>
+                {" · "}
+                <span
+                  className="down"
+                  title="poder de compra desde o início da rodada"
+                >
+                  💸 inflação {pct((indice - 1) * 100)} · real{" "}
+                  {brl(patrimonioReal)}
+                </span>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -66,6 +86,19 @@ export default function Portfolio({
           <span className="hint">marcação a mercado</span>
         </div>
         <div className="card">
+          {streak > 0 && (
+            <div className="list-row">
+              <span className="grow">
+                <span className="title">🔥 Combo de vendas lucrativas</span>
+                <span className="sub">
+                  venda no lucro aumenta · no prejuízo zera
+                </span>
+              </span>
+              <span className="right">
+                <span className="big num">x{streak}</span>
+              </span>
+            </div>
+          )}
           <div className="list-row">
             <span className="grow">
               <span className="title">Lucro / prejuízo</span>

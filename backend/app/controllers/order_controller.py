@@ -30,10 +30,6 @@ class OrderController:
                 f"{commodity.name} está suspenso pelo admin — mercado fechado"
             )
 
-        # Regra do jogo: só compra quem tem saldo, só vende quem tem estoque
-        if user_id is not None:
-            self._check_trade(user_id, commodity, payload)
-
         order = Order(
             commodity_id=payload.commodity_id,
             user_id=user_id,
@@ -44,12 +40,16 @@ class OrderController:
             filled=False,
         )
 
-        # Limite + insert + entrada no book no MESMO lock: sem isso, duas
-        # requisições paralelas do jogador enxergam 9 abertas e as duas
-        # passam — estouraria o limite. É o lock do match (serializa criar ×
-        # casar) e do cancel (serializa criar × cancelar).
+        # Checagens + insert + entrada no book no MESMO lock: sem isso, duas
+        # requisições paralelas enxergam os mesmos números e passam juntas
+        # (11ª ordem ou saldo/estoque estourado), e um `_match` poderia
+        # liquidar entre a checagem e o insert. É o lock do match (serializa
+        # criar × casar) e do cancel (serializa criar × cancelar).
         with order_book.locked():
             if user_id is not None:
+                # Regra do jogo: só compra quem tem saldo, só vende quem tem
+                # estoque — descontando o já comprometido nas abertas
+                self._check_trade(user_id, commodity, payload)
                 self._check_limit(user_id)
             self.db.add(order)
             self.db.commit()
@@ -111,20 +111,52 @@ class OrderController:
     def _check_trade(
         self, user_id: int, commodity: Commodity, payload: OrderCreate
     ) -> None:
-        """Barra ordem que o jogador não tem condição de honrar."""
+        """Barra ordem que o jogador não tem condição de honrar.
+
+        O saldo/estoque "livre" desconta o comprometido nas ordens abertas do
+        jogador (`filled = false AND quantity > 0`): sem isso, duas vendas de
+        1 un passariam cada uma checando contra o MESMO estoque de 1 e o
+        segundo match deixaria o estoque negativo — saldo tem o mesmo furo.
+        Comprometido: compras batem no saldo (um saldo só, qualquer commodity);
+        vendas batem no estoque (só daquela commodity).
+        Precisa rodar sob `order_book.locked()` — aí a checagem é atômica
+        contra `_apply_fill` e contra outra criação paralela.
+        """
         user = self.db.get(User, user_id)
         if user is None:
             return
 
         if payload.side == "bid":
+            comprometido = float(
+                self.db.query(
+                    func.coalesce(func.sum(Order.quantity * Order.price), 0.0)
+                )
+                .filter(Order.user_id == user_id, Order.side == "bid")
+                .filter(Order.filled == False, Order.quantity > 0)
+                .scalar()
+                or 0.0
+            )
             necessario = round(payload.quantity * payload.price, 2)
-            disponivel = float(user.balance or 0)
+            disponivel = float(user.balance or 0) - comprometido
+            extra = (
+                f" — {comprometido:.2f} já em compras abertas"
+                if comprometido > 1e-9
+                else ""
+            )
             if necessario > disponivel + 1e-9:
                 raise ConflictError(
                     f"Saldo insuficiente para esta compra "
-                    f"(disponível {disponivel:.2f}, necessário {necessario:.2f})"
+                    f"(livre {disponivel:.2f}, necessário {necessario:.2f}){extra}"
                 )
         else:
+            comprometido = float(
+                self.db.query(func.coalesce(func.sum(Order.quantity), 0.0))
+                .filter(Order.user_id == user_id, Order.side == "ask")
+                .filter(Order.commodity_id == commodity.id)
+                .filter(Order.filled == False, Order.quantity > 0)
+                .scalar()
+                or 0.0
+            )
             pos = (
                 self.db.query(Position)
                 .filter(Position.user_id == user_id)
@@ -132,10 +164,16 @@ class OrderController:
                 .first()
             )
             estoque = float(pos.quantity) if pos is not None else 0.0
-            if payload.quantity > estoque + 1e-9:
+            livre = estoque - comprometido
+            extra = (
+                f" — {comprometido:g} un já em vendas abertas"
+                if comprometido > 1e-9
+                else ""
+            )
+            if payload.quantity > livre + 1e-9:
                 raise ConflictError(
                     f"Estoque insuficiente de {commodity.name} "
-                    f"(disponível {estoque:g}, oferta {payload.quantity:g})"
+                    f"(livre {livre:g}, oferta {payload.quantity:g}){extra}"
                 )
 
     def list_mine(self, user_id: int) -> MyOrdersOut:

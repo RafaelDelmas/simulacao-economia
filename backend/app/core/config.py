@@ -31,7 +31,24 @@ class Settings(BaseSettings):
     bots_por_lote: int = 120            # Bots por lote
     bot_tick_ms: int = 100              # Loop assíncrono de bots (ms)
     taxa_inflacao_percentual: float = 0.5  # Taxa % aplicada a cada transição
-    taxa_sink_interval_minutos: int = 60  # Intervalo para taxa de carga perdida (min)
+    # 15 min ≈ 2%/h — em uma aula o dinheiro parado perde poder de compra de
+    # verdade (com 60 min o índice de inflação mal saía do lugar).
+    taxa_sink_interval_minutos: int = 15  # Intervalo para taxa de carga perdida (min)
+
+    # --- psicologia dos bots (recompensa variável) -------------------------
+    # A cada ciclo o bot engine sorteia ~10 ordens; a fração abaixo decide
+    # quantas CRUZAM o spread (execução instantânea de quem deixou ordem
+    # descansando) em vez de só repousar no book.
+    bots_frac_agressivas: float = 0.12  # fração das ordens de bot que cruzam
+    bots_frac_baleia: float = 0.001     # fração total que vira "baleia" (~1/10s)
+    bots_baleia_qtd_min: float = 20.0   # qtd mínima de uma fill de baleia
+    bots_baleia_qtd_max: float = 60.0   # qtd máxima de uma fill de baleia
+
+    # --- regimes de humor + janelas FOMO (market/regimes.py) ---------------
+    regime_minutos_min: int = 2         # troca de regime mais rápida (min)
+    regime_minutos_max: int = 5         # troca de regime mais lenta (min)
+    fomo_intervalo_minutos: int = 6     # a cada quanto tempo abre uma janela
+    fomo_duracao_segundos: int = 60     # duração da janela de oportunidade
 
     # Manutenção do banco — prune de orders (app/core/market/prune.py)
     ordem_ttl_minutos: int = 5           # ordem de BOT (user_id NULL) não executada expira em X min

@@ -28,3 +28,8 @@ class User(Base):
     balance: Mapped[float] = mapped_column(
         Float, nullable=False, default=0.0
     )
+    # Combo de vendas lucrativas: +1 por venda com lucro, zera no prejuízo,
+    # break-even mantém (orderbook._bump_streak). Só exibição/UX.
+    streak: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { PriceChart } from "./Chart";
-import { brl, iconFor, MAX_ORDENS_ABERTAS, num, pct, timeAgo } from "../api";
+import { brl, iconFor, MAX_ORDENS_ABERTAS, num, pct, REGIME_LABEL, timeAgo } from "../api";
+
+/** Distância máxima (sobre o preço alvo) pra uma ordem contar como "quase". */
+const QUASE_LIMITE = 0.02;
 
 /**
  * Tela do commodity: gráfico, livro de ofertas ao vivo, o balcão de compra/venda
@@ -41,10 +44,23 @@ export default function Commodity({
   const custo = quantidade * preco;
   const ehCompra = lado === "bid";
 
-  const semSaldo = ehCompra && custo > saldo + 1e-9;
-  const semEstoque = !ehCompra && quantidade > estoque + 1e-9;
+  // Saldo/estoque LIVRE: desconta o já comprometido em ordens abertas —
+  // espelha o `_check_trade` do backend. Sem isso duas ordens de 1 un
+  // passariam cada uma checando contra o mesmo saldo/estoque de 1.
+  const abertasMinhas = mine?.open || [];
+  const saldoComprometido = abertasMinhas
+    .filter((o) => o.side === "bid")
+    .reduce((soma, o) => soma + o.quantity * o.price, 0);
+  const estoqueComprometido = abertasMinhas
+    .filter((o) => o.side === "ask" && o.commodity_id === commodity.id)
+    .reduce((soma, o) => soma + o.quantity, 0);
+  const saldoLivre = saldo - saldoComprometido;
+  const estoqueLivre = estoque - estoqueComprometido;
+
+  const semSaldo = ehCompra && custo > saldoLivre + 1e-9;
+  const semEstoque = !ehCompra && quantidade > estoqueLivre + 1e-9;
   // Limite é GLOBAL (todas as commodities), por isso conta mine.open inteiro.
-  const noLimite = (mine?.open?.length || 0) >= MAX_ORDENS_ABERTAS;
+  const noLimite = abertasMinhas.length >= MAX_ORDENS_ABERTAS;
 
   const abertas = (mine?.open || []).filter(
     (o) => o.commodity_id === commodity.id,
@@ -53,12 +69,29 @@ export default function Commodity({
     .filter((o) => o.commodity_id === commodity.id)
     .slice(0, 8);
 
+  // Efeito "quase executou": ordem do jogador grudada no outro lado do book
+  // mas ainda sem cruzar. O book já está na tela — é só a conta de distância.
+  const quases = abertas.flatMap((o) => {
+    if (o.side === "ask") {
+      if (melhorBid == null || o.price <= melhorBid) return [];
+      const falta = o.price - melhorBid;
+      return falta / Math.max(o.price, 0.01) <= QUASE_LIMITE
+        ? [{ o, falta, alvo: melhorBid, lado: "melhor compra" }]
+        : [];
+    }
+    if (melhorAsk == null || o.price >= melhorAsk) return [];
+    const falta = melhorAsk - o.price;
+    return falta / Math.max(melhorAsk, 0.01) <= QUASE_LIMITE
+      ? [{ o, falta, alvo: melhorAsk, lado: "melhor venda" }]
+      : [];
+  });
+
   const maximo = useMemo(() => {
     if (ehCompra) {
-      return preco > 0 ? Math.max(0, Math.floor(saldo / preco)) : 0;
+      return preco > 0 ? Math.max(0, Math.floor(saldoLivre / preco)) : 0;
     }
-    return Math.max(0, Math.floor(estoque));
-  }, [ehCompra, preco, saldo, estoque]);
+    return Math.max(0, Math.floor(estoqueLivre));
+  }, [ehCompra, preco, saldoLivre, estoqueLivre]);
 
   function ajustar(delta) {
     setQtd(String(Math.max(0, Math.round((quantidade + delta) * 100) / 100)));
@@ -113,6 +146,11 @@ export default function Commodity({
           <span className={`pill ${varia >= 0 ? "up" : "down"}`}>
             {pct(varia)}
           </span>
+          {commodity.regime && commodity.regime !== "calmo" && (
+            <span className={`badge regime ${commodity.regime}`}>
+              {REGIME_LABEL[commodity.regime] || commodity.regime}
+            </span>
+          )}
           {commodity.is_frozen && <span className="badge off">suspenso</span>}
         </div>
 
@@ -335,12 +373,19 @@ export default function Commodity({
 
           {semSaldo && (
             <div className="warn">
-              Saldo insuficiente — faltam {brl(custo - saldo)}.
+              Saldo insuficiente — livre {brl(saldoLivre)}, faltam{" "}
+              {brl(custo - saldoLivre)}.
+              {saldoComprometido > 1e-9 && (
+                <> ({brl(saldoComprometido)} já em compras abertas)</>
+              )}
             </div>
           )}
           {semEstoque && (
             <div className="warn">
-              Você só tem {num(estoque, 0, 3)} un de {commodity.name}.
+              Só tem {num(estoqueLivre, 0, 3)} un livre de {commodity.name}.
+              {estoqueComprometido > 1e-9 && (
+                <> ({num(estoqueComprometido, 0, 3)} un em vendas abertas)</>
+              )}
             </div>
           )}
           {noLimite && (
@@ -392,6 +437,15 @@ export default function Commodity({
             </div>
           ) : (
             <>
+              {quases.map(({ o, falta, alvo, lado }) => (
+                <div className="quase" key={`q${o.id}`}>
+                  ⏳ <b>Quase!</b> sua {o.side === "ask" ? "venda" : "compra"} a{" "}
+                  <span className="num">{brl(o.price)}</span> faltou{" "}
+                  <b className="num">{brl(falta)}</b> para {lado} (
+                  <span className="num">{brl(alvo)}</span>).
+                </div>
+              ))}
+
               {abertas.map((o) => (
                 <div className="list-row" key={o.id}>
                   <span className="grow">

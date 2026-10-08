@@ -13,6 +13,13 @@ export default defineConfig({
         target: process.env.VITE_API_TARGET || "http://localhost:3100",
         changeOrigin: true,
       },
+      // WebSocket de mercado (/ws/market) — `ws: true` é obrigatório, senão
+      // o Vite responde o handshake como página normal e a conexão morre.
+      "/ws": {
+        target: process.env.VITE_API_TARGET || "http://localhost:3100",
+        ws: true,
+        changeOrigin: true,
+      },
     },
   },
   preview: {

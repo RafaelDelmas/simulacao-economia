@@ -141,6 +141,8 @@ async def ws_market(ws: WebSocket):
     await ws.accept()
     handlers = {
         "market.tick": lambda data: _ws_send_json(ws, data),
+        "market.regime": lambda data: _ws_send_json(ws, data),
+        "market.event": lambda data: _ws_send_json(ws, data),
         "tax.applied": lambda data: _ws_send_json(ws, data),
         "bot.activity": lambda data: _ws_send_json(ws, data),
     }

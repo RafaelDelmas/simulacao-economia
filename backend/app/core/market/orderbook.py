@@ -1,6 +1,7 @@
 """Order Book simples por commodity: mantém bids (compras) e asks (vendas) ordenados."""
 from __future__ import annotations
 
+import logging
 import threading
 from collections import defaultdict
 from contextlib import contextmanager
@@ -12,6 +13,8 @@ from app.models.commodity import Commodity
 from app.models.order import Order
 from app.models.position import Position
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 class OrderBook:
@@ -204,8 +207,14 @@ class OrderBook:
             # 2. liquidação financeira e de estoque
             valor = round(qty * price, 2)
             if ask.user_id is not None:
+                # O preço médio precisa ser lido ANTES da baixa do estoque:
+                # é o lucro realizado da venda que move o combo 🔥.
+                lucro = self._lucro_realizado(
+                    sess, ask.user_id, commodity_id, qty, price
+                )
                 self._bump_balance(sess, ask.user_id, valor)
                 self._bump_position(sess, ask.user_id, commodity_id, -qty, price)
+                self._bump_streak(sess, ask.user_id, lucro)
             if bid.user_id is not None:
                 self._bump_balance(sess, bid.user_id, -valor)
                 self._bump_position(sess, bid.user_id, commodity_id, qty, price)
@@ -221,6 +230,15 @@ class OrderBook:
         user = sess.get(User, user_id)
         if user is not None:
             user.balance = round(float(user.balance or 0) + delta, 2)
+            if user.balance < -1e-9:
+                # Rede de segurança: `_check_trade` na criação deveria ter
+                # impedido — loga alto em vez de deixar negativo silencioso.
+                logger.warning(
+                    "saldo negativo após liquidação: user=%s balance=%s delta=%s",
+                    user_id,
+                    user.balance,
+                    delta,
+                )
 
     @staticmethod
     def _bump_position(
@@ -242,6 +260,16 @@ class OrderBook:
                     avg_price=round(price, 4),
                 )
             )
+            if delta < -1e-9:
+                # Sem linha anterior não dá pra ter estoque a entregar:
+                # `_check_trade` na criação deveria ter barrado.
+                logger.warning(
+                    "estoque negativo sem linha anterior: user=%s "
+                    "commodity=%s delta=%s",
+                    user_id,
+                    commodity_id,
+                    delta,
+                )
             sess.flush()  # a próxima chamada precisa enxergar a linha
             return
 
@@ -259,7 +287,59 @@ class OrderBook:
             pos.avg_price = 0.0  # zerou a posição
         # venda com estoque positivo: o preço médio de compra permanece
         pos.quantity = novo
+        if novo < -1e-9:
+            # Rede de segurança (mesma do saldo): a checagem na criação é o
+            # muro — aqui só avisamos se algum outro caminho furou.
+            logger.warning(
+                "estoque negativo após liquidação: user=%s commodity=%s "
+                "quantity=%s delta=%s",
+                user_id,
+                commodity_id,
+                novo,
+                delta,
+            )
         sess.flush()
+
+    @staticmethod
+    def _lucro_realizado(
+        sess, user_id: int, commodity_id: int, qty: float, price: float
+    ) -> float:
+        """(preço da venda − preço médio) × qtd, com a posição ainda intacta.
+
+        Só a venda realiza (quem compra não mexe no combo). Posição ausente
+        ou média inválida devolve 0.0 — empate, não prejuízo: isso preserva a
+        rede de segurança de estoque negativo sem castigar quem vendeu certo.
+        """
+        pos = (
+            sess.query(Position)
+            .filter(Position.user_id == user_id)
+            .filter(Position.commodity_id == commodity_id)
+            .first()
+        )
+        if pos is None:
+            return 0.0
+        estoque = float(pos.quantity or 0)
+        media = float(pos.avg_price or 0)
+        if estoque <= 0 or media <= 0:
+            return 0.0
+        return round((price - media) * min(qty, estoque), 6)
+
+    @staticmethod
+    def _bump_streak(sess, user_id: int, lucro: float) -> None:
+        """Combo de vendas lucrativas: lucro +1, prejuízo zera, empate mantém.
+
+        Recompensa quem protege a margem e dói em quem quebra a sequência —
+        exibição pura (`users.streak`), nenhuma regra de saldo passa por aqui.
+        """
+        if abs(lucro) < 1e-9:
+            return
+        user = sess.get(User, user_id)
+        if user is None:
+            return
+        if lucro > 0:
+            user.streak = int(user.streak or 0) + 1
+        else:
+            user.streak = 0
 
     def _match(self, commodity_id: int, aggressor: Order | None = None) -> Order | None:
         """Match the best bid vs best ask for a commodity. Returns the order that was executed or None.

@@ -18,6 +18,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.market.events import event_bus
 from app.core.market.orderbook import OrderBook
+from app.core.market.regimes import regimes
 from app.models.commodity import Commodity
 from app.models.price_tick import PriceTick
 from sqlalchemy.orm import Session
@@ -112,6 +113,10 @@ class MarketEngine:
         self.running = False
         self._last_sink = time.time()
         self._last_price_update = time.time()
+        # Σ base_price no boot — denominador do índice de inflação da rodada
+        # (o sink sobe o base_price; o índice mede o quanto o dinheiro parado
+        # perdeu poder de compra desde o início da sessão).
+        self._base_inicial: float | None = None
 
     async def start(self):
         """Loop assíncrono principal — roda a cada bot_tick_ms ms."""
@@ -149,19 +154,19 @@ class MarketEngine:
             await self._apply_sink_tax()
             self._last_sink = now
 
-        # 4. Broadcast state via EventBus (WebSocket consumirá isso)
-        try:
-            snapshot = self.order_book.snapshot(0)  # placeholder; real commodity id virá do loop
-            event_bus.publish("market.tick", {"timestamp": now, "snapshot": snapshot})
-        except Exception:
-            pass
+        # 4. Broadcast do estado pro WS acontece dentro de
+        #    `_update_commodity_prices` (a cada `preco_tick_segundos`), com os
+        #    preços de verdade — um `market.tick` por 100ms seria spam e o
+        #    snapshot antigo era sempre vazio (commodity_id 0).
 
     def _update_commodity_prices(self):
         """Preço corrente = meio da melhor compra/venda, mais amostra pro gráfico.
 
         É o book que manda: se faltar liquidez de um lado, o preço fica onde
         está (não inventa valor). Cada ciclo deixa uma amostra em `price_ticks` —
-        é o que os gráficos do jogador leem.
+        é o que os gráficos do jogador leem. No fim publica `market.tick` com
+        os preços de verdade: é o que o frontend usa pra piscar o preço e o
+        P&L ao vivo (o snapshot antigo por commodity_id 0 era sempre vazio).
         """
         import logging
 
@@ -178,26 +183,56 @@ class MarketEngine:
                 )
                 / 100.0
             )
+            precos: dict[str, dict] = {}
+            soma_base = 0.0
             for c in sess.query(CommodityModel).all():
+                base = float(c.base_price or 0)
                 preco = preco_vivo(
                     self.order_book.best_bid_price(c.id),
                     self.order_book.best_ask_price(c.id),
-                    float(c.base_price or 0),
+                    base,
                     peso,
                 )
-                if preco is None:
-                    continue  # sem ordens: mantém o último preço conhecido
-                c.current_price = preco
-                base = float(c.base_price or 0)
-                if base:
-                    c.variation_24h = round((preco - base) / base * 100, 2)
-                sess.add(PriceTick(commodity_id=c.id, price=preco))
+                if preco is not None:
+                    c.current_price = preco
+                    if base:
+                        c.variation_24h = round((preco - base) / base * 100, 2)
+                    sess.add(PriceTick(commodity_id=c.id, price=preco))
+                soma_base += base
+                precos[str(c.id)] = {
+                    "price": float(c.current_price or base or 0),
+                    "variation": float(c.variation_24h or 0),
+                }
             sess.commit()
+            self._publicar_tick(precos, soma_base)
         except Exception:
             sess.rollback()
             logging.getLogger(__name__).exception("falha ao atualizar os precos")
         finally:
             sess.close()
+
+    def _publicar_tick(self, precos: dict[str, dict], soma_base: float) -> None:
+        """`market.tick`: preços ao vivo + índice de inflação + FOMO ativo.
+
+        O índice é `Σ base atual / Σ base no boot` — o que o sink de 15 em
+        15 min faz com o poder de compra do dinheiro parado. Sempre 1.0 no
+        primeiro tick (e volta a 1.0 se o servidor reiniciar: é medida da
+        sessão, documentado).
+        """
+        if not self._base_inicial:
+            if soma_base <= 0:
+                return  # sem commodity ainda: nada de tick
+            self._base_inicial = soma_base
+        indice = soma_base / self._base_inicial if self._base_inicial else 1.0
+        event_bus.publish(
+            "market.tick",
+            {
+                "timestamp": time.time(),
+                "prices": precos,
+                "inflacao_indice": round(indice, 6),
+                "fomo": regimes.fomo_payload(),
+            },
+        )
 
     async def _apply_sink_tax(self):
         """Taxa de carga perdida (item sink) — remove valor do mercado periodicamente.

@@ -8,6 +8,17 @@ const API = "/api";
  */
 export const MAX_ORDENS_ABERTAS = 10;
 
+/**
+ * Humor do mercado (backend: `app/core/market/regimes.py`). O backend manda o
+ * id cru no `regime` da commodity; este mapa é o rótulo pro chip no card.
+ */
+export const REGIME_LABEL = {
+  calmo: "😐 calmo",
+  alta: "📈 alta",
+  euforia: "🔥 euforia",
+  correcao: "📉 correção",
+};
+
 export function getToken() {
   return localStorage.getItem("token");
 }

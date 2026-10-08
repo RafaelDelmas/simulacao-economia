@@ -59,6 +59,13 @@ def init_db() -> None:
                 "executed_quantity DOUBLE PRECISION NOT NULL DEFAULT 0"
             )
         )
+        # Combo de vendas lucrativas (UX): linha legada começa em 0.
+        conn.execute(
+            text(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS "
+                "streak INTEGER NOT NULL DEFAULT 0"
+            )
+        )
     # Sessão ORM para ops de seed (balance admin etc.)
     db = SessionLocal()
     try:

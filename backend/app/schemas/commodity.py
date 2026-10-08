@@ -20,6 +20,9 @@ class CommodityOut(CommodityBase):
     current_price: float
     variation_24h: float
     is_frozen: bool = False
+    # Humor do mercado (market/regimes.py): calmo | alta | euforia | correcao.
+    # Não é coluna do banco — o controller preenche do singleton em memória.
+    regime: str = "calmo"
     created_at: datetime
 
 

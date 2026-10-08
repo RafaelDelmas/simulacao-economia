@@ -129,7 +129,7 @@ lifespan, então valida seed e engines também).
 | GET/POST | `/api/users`              | **admin**   | lista; cria com saldo inicial opcional |
 | PATCH  | `/api/users/{id}`           | **admin**   | `{balance}` define o saldo final ou `{delta}` soma/desconta (não pode fechar negativo) |
 | DELETE | `/api/users/{id}`           | **admin**   | apaga o jogador: cancela ordens abertas (banco+book), some estoque/saldo; trocas executadas ficam com `user_id=NULL`; guards: não apagar a si mesmo nem o último admin |
-| GET    | `/api/commodities`          | —           | mercado aberto (`current_price`, `variation_24h`, `base_price`, `is_frozen`) |
+| GET    | `/api/commodities`          | —           | mercado aberto (`current_price`, `variation_24h`, `base_price`, `is_frozen`, `regime`) |
 | GET    | `/api/commodities/history`  | —           | `?limit=` ticks por commodity (alimenta os gráficos) |
 | POST   | `/api/commodities`, `/seed`, `/refresh-prices` | **admin** | escrita |
 | PATCH  | `/api/commodities/{id}`     | **admin**   | `{base_price}` troca a âncora nominal e recorta o book na nova faixa |
@@ -137,7 +137,7 @@ lifespan, então valida seed e engines também).
 | POST   | `/api/commodities/{id}/freeze` | **admin** | `{frozen}` congela/reabre: congelada não aceita ordem nova (nem de bot) |
 | POST   | `/api/commodities/{id}/clear-book` | **admin** | cancela todas as ordens abertas da commodity; `{reset_price:true}` devolve o preço ao nominal |
 | POST   | `/api/commodities/reset`    | **admin**   | zerada geral: livro limpo + preços no nominal (histórico fica) |
-| POST   | `/api/orders`               | Bearer      | cria ordem; **409** se congelada ou no limite de 10 abertas (`jogador_ordens_abertas_max`) |
+| POST   | `/api/orders`               | Bearer      | cria ordem; **409** se congelada, no limite de 10 abertas (`jogador_ordens_abertas_max`) ou sem saldo/estoque **livre** (desconta ordens abertas) |
 | GET    | `/api/orders/mine`          | Bearer      | `{open, filled}` do usuário |
 | DELETE | `/api/orders/{id}`          | Bearer      | cancela ordem aberta (dono; admin: qualquer uma). **404** inexistente/alheia, **409** já executada. Sem estorno |
 | GET    | `/api/orders/book`          | —           | `?commodity_id=&depth=` livro de ofertas (topo do book em memória) |
@@ -145,7 +145,7 @@ lifespan, então valida seed e engines também).
 | POST   | `/api/orders/prune`         | **admin**   | roda o prune na hora (TTL das abertas — bot 5 min / jogador 10 h — + histórico/ticks) |
 | GET    | `/api/positions`            | Bearer      | carteira do jogador |
 | GET/POST/PUT/DELETE | `/api/items`    | Bearer      | CRUD de exemplo |
-| WS     | `/ws/market`                | —           | envia `init` e depois `market.tick`, `bot.activity`, `tax.applied` |
+| WS     | `/ws/market`                | —           | envia `init`, `market.tick` (preços + `inflacao_indice` + `fomo`), `market.regime`, `market.event`, `bot.activity` (com `destaques` 🐋), `tax.applied` |
 
 Docs interativos: `/docs` e `/openapi.json`.
 
@@ -153,7 +153,8 @@ Docs interativos: `/docs` e `/openapi.json`.
 
 1. `init_db()` — cria as tabelas (`Base.metadata.create_all`) + migrações
    idempotentes: `ALTER TABLE users ADD COLUMN IF NOT EXISTS balance`,
-   `ALTER TABLE commodities ADD COLUMN IF NOT EXISTS is_frozen` e
+   `ALTER TABLE users ADD COLUMN IF NOT EXISTS streak` (combo 🔥 de vendas
+   lucrativas), `ALTER TABLE commodities ADD COLUMN IF NOT EXISTS is_frozen` e
    `ALTER TABLE orders ADD COLUMN IF NOT EXISTS executed_quantity` (linhas
    legadas ficam com 0 — a quantidade original se perdeu quando a ordem zerou).
 2. `UserController.ensure_admin()` — cria o admin do `.env` se não existir.
@@ -190,6 +191,13 @@ Em shutdown, o `finally` cancela a task do engine.
   O ticker de "Movimentações" e qualquer UI de "quanto trocou" leem
   `executed_quantity` — ler `quantity` em ordem preenchida mostra 0.
 - Ordem criada pela API entra no banco **e** no `order_book` (senão nunca casa).
+- **`_check_trade` roda dentro de `order_book.locked()`** e desconta das ordens
+  abertas do jogador o que já está comprometido (saldo: compras de **qualquer**
+  commodity; estoque: vendas daquela commodity). Não tire do lock nem remova o
+  desconto — é o que impede saldo/estoque negativo (duas ordens de 1 un
+  passando cada uma contra o mesmo saldo/estoque de 1, e depois as duas
+  executando). Bônus: `_apply_fill` loga `warning` se ainda assim ficar
+  negativo (não clampa — clamping quebra a conservação de valor).
 - Erros de negócio: lance as classes de `core/exceptions.py` — o handler global já
   devolve `{"detail": "..."}` com o status certo. Não devolva `HTTPException` solto.
 - **Rotas literais antes das parametrizadas** no mesmo router (ex.:
@@ -198,6 +206,15 @@ Em shutdown, o `finally` cancela a task do engine.
 - **Intervenções de admin**: mexa no banco e **depois** no `order_book`
   (`remove_ids`/`shock_prices`) — e sempre sob o lock do book quando for
   reprecificar (o matching roda no mesmo lock).
+- **Psicologia da engine** (`market/regimes.py` + `market/bots_activity.py`):
+  ordens agressivas (fração que **cruza** o spread), regime por commodity
+  (viés de lado ≤80%, troca a cada 2–5 min), janela FOMO e anúncio de baleia.
+  Quem manda no preço continua sendo `preco_vivo()` — viés de bot só puxa o
+  book, faixa ±30% + reversão seguram o teto. `limita_preco` de bot clampeia
+  no **`base_price` nominal** (não no `current_price`: a faixa vagaria junto
+  e o clampeio não faria nada). O 🐋 lê o `executed_quantity` **acumulado da
+  própria ordem** — o evento `order.executed` traz o tamanho do lado que
+  zerou (quase sempre o pedaço miúdo que a baleia comeu).
 
 ## Segurança / perfis
 
@@ -209,9 +226,11 @@ Em shutdown, o `finally` cancela a task do engine.
 
 ## Pendências conhecidas (decisões abertas, não "quebrado")
 
-- `market.tick` publica `order_book.snapshot(0)` → sempre vazio; ainda não há
-  snapshot por commodity no WebSocket (o frontend hoje faz polling: 4s mercado,
-  2,5s book, 12s histórico — sem WS).
+- `market.tick` agora publica preços reais por commodity (a cada
+  `preco_tick_segundos`), `inflacao_indice` e a janela `fomo` ativa — mas o
+  índice é **medida da sessão** (Σ `base_price` no boot; zera no reinício do
+  processo) e o `init` do WS ainda manda `snapshot(0)` vazio (histórico).
+  Frontend usa WS + polling como fallback (4s mercado, 2,5s book, 12s histórico).
 - `CommodityController.refresh_prices()` continua placeholder (`current_price =
   base_price + variation_24h`); quem calcula preço de verdade é
   `MarketEngine._update_commodity_prices()` → `preco_vivo()` (meio da melhor
