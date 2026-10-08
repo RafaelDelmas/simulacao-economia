@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { brl, clearSession, getJSON, getSession, postJSON } from "./api";
+import {
+  brl,
+  clearSession,
+  delJSON,
+  getJSON,
+  getSession,
+  postJSON,
+} from "./api";
 import AdminMarket from "./components/AdminMarket";
 import Commodity from "./components/Commodity";
 import Login from "./components/Login";
@@ -157,6 +164,22 @@ export default function App() {
     [carregar, carregarHistorico, mostrarToast],
   );
 
+  /** Cancela uma ordem aberta (o backend some do book e do banco junto). */
+  const cancelarOrdem = useCallback(
+    async (id) => {
+      try {
+        await delJSON(`/orders/${id}`);
+        mostrarToast("Ordem cancelada ✖️", "ok");
+        await carregar();
+        return true;
+      } catch (e) {
+        mostrarToast(e.message || "Não foi possível cancelar a ordem.", "err");
+        return false;
+      }
+    },
+    [carregar, mostrarToast],
+  );
+
   function sair() {
     clearTimeout(timerToast.current);
     clearSession();
@@ -265,6 +288,7 @@ export default function App() {
             commodities={dados.commodities}
             mine={dados.mine}
             onOpen={abrirCommodity}
+            onCancel={cancelarOrdem}
           />
         ) : (
           <>

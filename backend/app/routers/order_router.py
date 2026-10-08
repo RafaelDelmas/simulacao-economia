@@ -68,3 +68,19 @@ def list_filled_orders(
 def prune_now(_: User = Depends(get_current_admin)):
     """Roda um ciclo de prune agora — mesma regra do loop automático (admin)."""
     return prune_tudo(order_book)
+
+
+# Parametrizada por último: rotas literais (/mine, /book, /open, /filled,
+# /prune) vêm antes, convenção do AGENTS.md.
+@router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
+def cancel_order(
+    order_id: int,
+    user: User = Depends(get_current_user),
+    controller: OrderController = Depends(get_controller),
+):
+    """Cancela uma ordem aberta: a do jogador logado, ou qualquer uma (admin).
+
+    404 se não existir / não for sua; 409 se já executou. Sem estorno —
+    dinheiro e estoque só trocam no match.
+    """
+    controller.cancel(order_id, user)

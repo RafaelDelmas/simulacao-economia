@@ -1,5 +1,13 @@
 const API = "/api";
 
+/**
+ * Espelha `jogador_ordens_abertas_max` do backend (config.py) — só pra UI
+ * bloquear o balcão antes do envio. A fonte de verdade continua sendo a API:
+ * se o admin mudar o limite no .env, o 409 com a mensagem certa chega mesmo
+ * que este número esteja defasado.
+ */
+export const MAX_ORDENS_ABERTAS = 10;
+
 export function getToken() {
   return localStorage.getItem("token");
 }

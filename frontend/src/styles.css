@@ -841,6 +841,21 @@ button {
   font: inherit;
 }
 
+/* conteúdo clicável de uma list-row (abre o commodity); o 2º filho da linha
+   é o chip de cancelar — botão dentro de botão é HTML inválido, por isso a
+   linha virou div e este bloco virou button. */
+.row-open {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
 .list-row-btn:last-child {
   border-bottom: none;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { PriceChart } from "./Chart";
-import { brl, iconFor, num, pct, timeAgo } from "../api";
+import { brl, iconFor, MAX_ORDENS_ABERTAS, num, pct, timeAgo } from "../api";
 
 /**
  * Tela do commodity: gráfico, livro de ofertas ao vivo, o balcão de compra/venda
@@ -43,6 +43,8 @@ export default function Commodity({
 
   const semSaldo = ehCompra && custo > saldo + 1e-9;
   const semEstoque = !ehCompra && quantidade > estoque + 1e-9;
+  // Limite é GLOBAL (todas as commodities), por isso conta mine.open inteiro.
+  const noLimite = (mine?.open?.length || 0) >= MAX_ORDENS_ABERTAS;
 
   const abertas = (mine?.open || []).filter(
     (o) => o.commodity_id === commodity.id,
@@ -64,6 +66,7 @@ export default function Commodity({
 
   async function enviar() {
     if (commodity.is_frozen) return; // balcão fechado pelo admin
+    if (noLimite) return; // já tem o máximo de ordens abertas no book
     if (quantidade <= 0 || preco <= 0 || semSaldo || semEstoque) return;
     setEnviando(true);
     try {
@@ -340,12 +343,19 @@ export default function Commodity({
               Você só tem {num(estoque, 0, 3)} un de {commodity.name}.
             </div>
           )}
+          {noLimite && (
+            <div className="warn">
+              🔒 Você já tem {MAX_ORDENS_ABERTAS} ordens abertas — cancele uma
+              na carteira antes de enviar outra.
+            </div>
+          )}
 
           <button
             className={`btn ${ehCompra ? "btn-buy" : "btn-sell"}`}
             disabled={
               enviando ||
               commodity.is_frozen ||
+              noLimite ||
               quantidade <= 0 ||
               preco <= 0 ||
               semSaldo ||
@@ -357,9 +367,11 @@ export default function Commodity({
               ? "Enviando…"
               : commodity.is_frozen
                 ? "Mercado suspenso"
-                : ehCompra
-                  ? `Comprar ${num(quantidade, 0, 3)} de ${commodity.name}`
-                  : `Vender ${num(quantidade, 0, 3)} de ${commodity.name}`}
+                : noLimite
+                  ? `Limite de ${MAX_ORDENS_ABERTAS} ordens atingido`
+                  : ehCompra
+                    ? `Comprar ${num(quantidade, 0, 3)} de ${commodity.name}`
+                    : `Vender ${num(quantidade, 0, 3)} de ${commodity.name}`}
           </button>
         </div>
       </section>

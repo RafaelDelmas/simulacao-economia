@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     taxa_sink_interval_minutos: int = 60  # Intervalo para taxa de carga perdida (min)
 
     # Manutenção do banco — prune de orders (app/core/market/prune.py)
-    ordem_ttl_minutos: int = 5           # ordem aberta não executada expira em X min
+    ordem_ttl_minutos: int = 5           # ordem de BOT (user_id NULL) não executada expira em X min
+    ordem_ttl_jogador_minutos: int = 600 # ordem de JOGADOR expira em X min (600 = 10 h)
+    jogador_ordens_abertas_max: int = 10 # máximo de ordens abertas por jogador (global)
     historico_commodities_max: int = 500  # ordens preenchidas guardadas por commodity
     prune_intervalo_segundos: int = 60    # periodicidade do prune automático
 

@@ -1,4 +1,6 @@
-import { brl, iconFor, num, timeAgo } from "../api";
+import { useEffect, useState } from "react";
+
+import { brl, iconFor, MAX_ORDENS_ABERTAS, num, timeAgo } from "../api";
 
 /**
  * Carteira: quanto dinheiro você tem, quanto está em estoque e o que está
@@ -10,7 +12,10 @@ export default function Portfolio({
   commodities,
   mine,
   onOpen,
+  onCancel,
 }) {
+  const [confirmando, setConfirmando] = useState(null);
+
   const saldo = Number(me?.balance || 0);
   const estoque = (positions || []).reduce((s, p) => s + (p.valor || 0), 0);
   const custo = (positions || []).reduce((s, p) => s + (p.custo || 0), 0);
@@ -21,6 +26,24 @@ export default function Portfolio({
   const executadas = (mine?.filled || []).slice(0, 12);
   const nomeDe = (id) =>
     commodities?.find((c) => c.id === id)?.name || `#${id}`;
+
+  // a confirmação expira sozinha: toque perdido não cancela nada
+  // (mesmo padrão do painel de usuários)
+  useEffect(() => {
+    if (!confirmando) return;
+    const t = setTimeout(() => setConfirmando(null), 5000);
+    return () => clearTimeout(t);
+  }, [confirmando]);
+
+  /** Cancelamento em dois toques: o primeiro arma, o segundo executa. */
+  async function toqueCancelar(o) {
+    if (confirmando !== o.id) {
+      setConfirmando(o.id);
+      return;
+    }
+    const ok = await onCancel?.(o.id);
+    if (!ok) setConfirmando(null); // erro (ex.: já executou): volta ao normal
+  }
 
   return (
     <>
@@ -110,7 +133,10 @@ export default function Portfolio({
       <section className="section">
         <div className="section-title">
           <h2>Ordens abertas</h2>
-          <span className="hint">expiram em ~5 min</span>
+          <span className="hint">
+            {abertas.length}/{MAX_ORDENS_ABERTAS} ordens · expiram em 10h ·
+            toque ✖ para cancelar
+          </span>
         </div>
         <div className="card">
           {!abertas.length ? (
@@ -120,12 +146,11 @@ export default function Portfolio({
             </div>
           ) : (
             abertas.map((o) => (
-              <button
-                key={o.id}
-                className="list-row list-row-btn"
-                onClick={() => onOpen(o.commodity_id)}
-              >
-                <span className="grow">
+              <div className="list-row" key={o.id}>
+                <button
+                  className="row-open"
+                  onClick={() => onOpen(o.commodity_id)}
+                >
                   <span className="title">
                     {nomeDe(o.commodity_id)}{" "}
                     <span className="badge open">
@@ -136,8 +161,14 @@ export default function Portfolio({
                     restam {num(o.quantity, 0, 3)} un a {brl(o.price)} ·{" "}
                     {timeAgo(o.created_at)}
                   </span>
-                </span>
-              </button>
+                </button>
+                <button
+                  className={confirmando === o.id ? "chip danger on" : "chip"}
+                  onClick={() => toqueCancelar(o)}
+                >
+                  {confirmando === o.id ? "cancelar mesmo?" : "✖ cancelar"}
+                </button>
+              </div>
             ))
           )}
         </div>

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import threading
 from collections import defaultdict
+from contextlib import contextmanager
 from typing import Dict, List, Tuple
 
 from app.core.database import SessionLocal
@@ -27,6 +28,20 @@ class OrderBook:
         self._db = db_session
         # Bots (event loop) e API (threadpool) mexem no mesmo book.
         self._lock = threading.RLock()
+
+    @contextmanager
+    def locked(self):
+        """Mantém o lock do book durante o bloco do caller.
+
+        Exposto pro controller de cancelamento: o delete no banco precisa
+        acontecer com o book parado, senão um `_match` (bots a cada 100ms)
+        poderia liquidar a ordem entre o SELECT e o DELETE — dinheiro trocaria
+        de mão sem linha no banco. Todos os matches rodam sob este lock,
+        segurá-lo aqui é o que torna "cancelar" e "executar" mutuamente
+        exclusivos. RLock: `remove_ids` pode ser chamado de dentro.
+        """
+        with self._lock:
+            yield
 
     def add(self, order: Order) -> Tuple[bool, str]:
         """Insere uma ordem e tenta matching imediatos. Retorna (executou_parte, status).

@@ -3,12 +3,16 @@
 É um jogo, não sistema contábil: não faz sentido guardar histórico infinito.
 Duas regras aplicadas juntas, deixando o banco com tamanho previsível:
 
-1. **Ordens abertas expiram** (`ordem_ttl_minutos`): se ninguém executou a ordem
-   no prazo, ela sai do banco *e* do book em memória — liquidez velha atrapalha
-   mais do que ajuda e os bots reabastecem a cada 100ms.
-   O book zera a cada restart, então o **boot apaga todas as abertas** de uma vez
-   (`limpar_abertas=True`) em vez de esperar o TTL. **Invariante: `filled = false`
-   ⟺ ordem viva no book.**
+1. **Ordens abertas expiram** (TTL por dono):
+   - **bot** (`user_id IS NULL`, `ordem_ttl_minutos` = 5 min): liquidez velha
+     atrapalha mais do que ajuda e os bots reabastecem a cada 100ms;
+   - **jogador** (`user_id IS NOT NULL`, `ordem_ttl_jogador_minutos` = 10 h):
+     tempo de esperar o mercado — e dá pra cancelar antes
+     (`DELETE /api/orders/{id}`).
+   No prazo, a ordem sai do banco *e* do book em memória. O book zera a cada
+   restart, então o **boot apaga todas as abertas** de uma vez
+   (`limpar_abertas=True`) em vez de esperar o TTL.
+   **Invariante: `filled = false` ⟺ ordem viva no book.**
 2. **Histórico de negociações limitado** (`historico_commodities_max`): ficam só
    as últimas N ordens preenchidas de cada commodity — o bastante pra feed de
    trades e pra sensação de preço recente.
@@ -29,11 +33,14 @@ from app.core.market.orderbook import OrderBook
 
 logger = logging.getLogger(__name__)
 
-# Abertas além do TTL: sai do banco e os ids devolvidos sincronizam o book.
+# Abertas além do TTL — cutoff por dono (bot 5 min / jogador 10 h): sai do
+# banco e os ids devolvidos sincronizam o book.
 _SQL_EXPIRAR_ABERTAS = text(
     """
     DELETE FROM orders
-    WHERE filled = false AND created_at < :cutoff
+    WHERE filled = false
+      AND (   (user_id IS NULL     AND created_at < :cutoff_bot)
+           OR (user_id IS NOT NULL AND created_at < :cutoff_jogador))
     RETURNING id
     """
 )
@@ -86,18 +93,23 @@ def prune_orders(order_book: OrderBook, *, limpar_abertas: bool = False) -> dict
     `limpar_abertas=True` apaga TODAS as ordens abertas — uso restrito ao boot,
     onde o book acabou de ser criado e nenhuma ordem pode estar viva.
     """
-    ttl = timedelta(minutes=max(1, settings.ordem_ttl_minutos))
-    cutoff = datetime.now(timezone.utc) - ttl
+    # Dois cortes a partir do mesmo "agora": bot (5 min) e jogador (10 h).
+    agora = datetime.now(timezone.utc)
+    cutoff_bot = agora - timedelta(minutes=max(1, settings.ordem_ttl_minutos))
+    cutoff_jogador = agora - timedelta(
+        minutes=max(1, settings.ordem_ttl_jogador_minutos)
+    )
     keep = max(1, settings.historico_commodities_max)
 
     sess = SessionLocal()
     try:
-        # 1. abertas: fora do TTL (ou todas, quando `limpar_abertas`)
+        # 1. abertas: fora do TTL do respectivo dono (ou todas, no boot)
         if limpar_abertas:
             expiradas = sess.execute(_SQL_ABRIRAS_TODAS).fetchall()
         else:
             expiradas = sess.execute(
-                _SQL_EXPIRAR_ABERTAS, {"cutoff": cutoff}
+                _SQL_EXPIRAR_ABERTAS,
+                {"cutoff_bot": cutoff_bot, "cutoff_jogador": cutoff_jogador},
             ).fetchall()
 
         # 2. limita o histórico de preenchidas

@@ -137,11 +137,12 @@ lifespan, então valida seed e engines também).
 | POST   | `/api/commodities/{id}/freeze` | **admin** | `{frozen}` congela/reabre: congelada não aceita ordem nova (nem de bot) |
 | POST   | `/api/commodities/{id}/clear-book` | **admin** | cancela todas as ordens abertas da commodity; `{reset_price:true}` devolve o preço ao nominal |
 | POST   | `/api/commodities/reset`    | **admin**   | zerada geral: livro limpo + preços no nominal (histórico fica) |
-| POST   | `/api/orders`               | Bearer      | cria ordem; **409** se a commodity estiver congelada |
+| POST   | `/api/orders`               | Bearer      | cria ordem; **409** se congelada ou no limite de 10 abertas (`jogador_ordens_abertas_max`) |
 | GET    | `/api/orders/mine`          | Bearer      | `{open, filled}` do usuário |
+| DELETE | `/api/orders/{id}`          | Bearer      | cancela ordem aberta (dono; admin: qualquer uma). **404** inexistente/alheia, **409** já executada. Sem estorno |
 | GET    | `/api/orders/book`          | —           | `?commodity_id=&depth=` livro de ofertas (topo do book em memória) |
 | GET    | `/api/orders/open`, `/filled` | —         | `?commodity_id=&limit=` (limit 1..1000, padrão 200) |
-| POST   | `/api/orders/prune`         | **admin**   | roda o prune na hora (TTL das abertas + histórico/ticks) |
+| POST   | `/api/orders/prune`         | **admin**   | roda o prune na hora (TTL das abertas — bot 5 min / jogador 10 h — + histórico/ticks) |
 | GET    | `/api/positions`            | Bearer      | carteira do jogador |
 | GET/POST/PUT/DELETE | `/api/items`    | Bearer      | CRUD de exemplo |
 | WS     | `/ws/market`                | —           | envia `init` e depois `market.tick`, `bot.activity`, `tax.applied` |
