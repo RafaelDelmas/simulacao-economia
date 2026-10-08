@@ -15,7 +15,10 @@ cada estado vive em `regimes.py`):
   traz a quantidade do lado que zerou (o pedaço comido, quase sempre miúdo);
 - **regime + FOMO**: viés de lado, deslocamento de preço e agressividade vêm
   do humor da commodity — os bots executam a tendência que o jogador lê no
-  gráfico, e a janela FOMO bomba a compra por alguns segundos.
+  gráfico, e a janela FOMO bomba a compra por alguns segundos;
+- **cartas de evento (manchetes)**: de tempos em tempos (`cartas_evento.json`)
+  uma manchete "greve nos portos" dispara o choque no(s) alvo(s) e vira cena
+  no feed — `manchetes.tick` roda aqui junto com os regimes.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from typing import Any
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.market.engine import limita_preco
+from app.core.market.news import manchetes
 from app.core.market.regimes import regimes
 from app.models.commodity import Commodity as CommodityModel  # type: ignore
 from app.models.order import Order as OrderModel  # type: ignore
@@ -84,9 +88,11 @@ class BotActivity:
             if not commodities:
                 return
 
-            # Regimes/FOMO rotacionam por aqui: a lista de ids já está na mão
-            # (sem query extra) e commodity congelada fica de fora de propósito.
+            # Regimes/FOMO e cartas de evento rotacionam por aqui: a lista de
+            # ids já está na mão (sem query extra) e commodity congelada fica
+            # de fora de propósito.
             regimes.tick([c.id for c in commodities])
+            manchetes.tick(commodities)
 
             frac_agressivas = getattr(settings, "bots_frac_agressivas", 0.12)
 

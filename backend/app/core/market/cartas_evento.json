@@ -1,0 +1,37 @@
+{
+  "_doc": "Cartas de evento (manchetes) do mercado. Editável SEM reiniciar o backend: o news.py re-lê este arquivo quando reagenda. impacto em % (negativo = queda), alvos = nomes das commodities, '*' = todas, 'aleatoria' = uma sorteada; peso = chance relativa de sair; id tem que ser único.",
+  "config": {
+    "intervalo_min_minutos": 45,
+    "intervalo_max_minutos": 75,
+    "impacto_fator_min": 0.75,
+    "impacto_fator_max": 1.25,
+    "banner_segundos": 18,
+    "historico_max": 20
+  },
+  "cartas": [
+    {"id": "greve_portos", "emoji": "⚓", "titulo": "Greve nos portos trava escoamento", "alvos": ["Carvão", "Aço"], "impacto": 3.0, "peso": 1},
+    {"id": "safra_trigo", "emoji": "🌾", "titulo": "Safra recorde de trigo surpreende o mercado", "alvos": ["Trigo"], "impacto": -5.0, "peso": 1},
+    {"id": "embargo_carvao", "emoji": "🚫", "titulo": "Embargo internacional atinge o carvão", "alvos": ["Carvão"], "impacto": 5.0, "peso": 1},
+    {"id": "chuva_cafe", "emoji": "🌧️", "titulo": "Chuva atrasa a colheita do café", "alvos": ["Café"], "impacto": 4.0, "peso": 1},
+    {"id": "geada_sul", "emoji": "❄️", "titulo": "Geada no Sul atinge lavouras", "alvos": ["Trigo", "Café"], "impacto": 4.5, "peso": 1},
+    {"id": "praga_algodao", "emoji": "🐛", "titulo": "Praga devora lavouras de algodão", "alvos": ["Algodão"], "impacto": 5.0, "peso": 1},
+    {"id": "incendio_usina", "emoji": "🔥", "titulo": "Incêndio em usina siderúrgica interrompe produção", "alvos": ["Aço"], "impacto": 4.5, "peso": 1},
+    {"id": "frete_dispara", "emoji": "🚢", "titulo": "Frete marítimo dispara e encarece tudo", "alvos": ["*"], "impacto": 2.0, "peso": 1},
+    {"id": "greve_caminhoneiros", "emoji": "🚛", "titulo": "Greve de caminhoneiros trava o país", "alvos": ["*"], "impacto": 2.5, "peso": 1},
+    {"id": "norma_ambiental", "emoji": "🌳", "titulo": "Nova norma restringe mineração", "alvos": ["Carvão"], "impacto": 4.0, "peso": 1},
+    {"id": "onda_calor", "emoji": "🥵", "titulo": "Onda de calor dispara o consumo de energia", "alvos": ["Carvão"], "impacto": 3.5, "peso": 1},
+    {"id": "boom_moradia", "emoji": "🏗️", "titulo": "Boom da moradia puxa a demanda por aço", "alvos": ["Aço"], "impacto": 4.0, "peso": 1},
+    {"id": "antidumping", "emoji": "🛡️", "titulo": "Imposto antidumping encarece o aço importado", "alvos": ["Aço"], "impacto": 3.5, "peso": 1},
+    {"id": "estoques_recordes", "emoji": "📦", "titulo": "Estoques recordes pressionam os preços para baixo", "alvos": ["Trigo", "Algodão"], "impacto": -3.5, "peso": 1},
+    {"id": "acordo_comercial", "emoji": "🤝", "titulo": "Acordo comercial abre novos mercados", "alvos": ["Trigo", "Algodão"], "impacto": -3.0, "peso": 1},
+    {"id": "industria_fria", "emoji": "📉", "titulo": "Indústria desacelera e demanda cai", "alvos": ["Aço", "Carvão"], "impacto": -4.0, "peso": 1},
+    {"id": "colheita_antecipada", "emoji": "🧺", "titulo": "Colheita antecipada alarga a oferta", "alvos": ["Trigo"], "impacto": -4.0, "peso": 1},
+    {"id": "jazimento", "emoji": "💎", "titulo": "Descoberta de grande jazimento derruba a escassez", "alvos": ["Carvão"], "impacto": -5.0, "peso": 1},
+    {"id": "cafe_qualidade", "emoji": "☕", "titulo": "Café perde nota em avaliação internacional", "alvos": ["Café"], "impacto": -4.0, "peso": 1},
+    {"id": "apagao", "emoji": "⚡", "titulo": "Apagão generalizado para as fábricas", "alvos": ["Aço", "Algodão"], "impacto": -3.5, "peso": 1},
+    {"id": "cartel_boato", "emoji": "📰", "titulo": "Boato de investigação por cartel abala o mercado", "alvos": ["Aço"], "impacto": -3.0, "peso": 1},
+    {"id": "porto_moderniza", "emoji": "🚜", "titulo": "Reforma do porto promete desapego e fluidez", "alvos": ["*"], "impacto": -2.0, "peso": 1},
+    {"id": "demanda_china", "emoji": "🐉", "titulo": "China acelera compras no exterior", "alvos": ["Trigo", "Algodão", "Café"], "impacto": 3.0, "peso": 1},
+    {"id": "frico_europa", "emoji": "🧊", "titulo": "Inverno rigoroso na Europa aquece a demanda", "alvos": ["Carvão", "Café"], "impacto": 3.0, "peso": 1}
+  ]
+}

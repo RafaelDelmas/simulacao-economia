@@ -39,11 +39,15 @@ mexeria na regra que acabamos de proteger — só como opcional configurável po
 
 ## 2. Eventos & narrativa
 
-**7. 🔥 Cartas de evento (manchetes)** — botão no painel do admin: "Greve nos portos",
+**7. ✅ Cartas de evento (manchetes) — FEITO** —  "Greve nos portos",
 "Safra recorde de trigo", "Embargo ao carvão", "Chuva atrasa a colheita do café".
-Cada carta = texto da manchete + `shock`/`freeze` na commodity + banner colorido no topo
-(via WS, evento `news`). *Diverte:* vira cena, não só número. *Gancho:* a chamada de
+Cada carta = texto da manchete e interferencia no mercado *Diverte:* vira cena, não só número. *Gancho:* a chamada de
 choque já existe e faz o trabalho pesado.
+*Como ficou:* `backend/app/core/market/cartas_evento.json` (24 cartas editáveis,
+períodos 45–75 min sem reiniciar), `core/market/news.py`, `GET /api/news` +
+`POST /api/news/disparar` (mestre de cena, botão no Admin), evento WS
+`market.news` → banner "📰 ÚLTIMA HORA". Ideia 34 (bots reagem a manchetes) ainda
+pendente.
 
 **8. 🧠 Rumores (informação incerta)** — o feed publica um boato ("dizem que haverá
 embargo no carvão") que acerta ~50% das vezes. Quando o evento verdadeiro rola, quem
@@ -188,8 +192,8 @@ book → badge de iniciado. *Diverte:* reduz o choque da tela cheia de número.
 
 1. **P&L na carteira (25)** — o `avg_price` já está lá; dá sentido pra tudo o resto.
 2. **Ranking + patentes (12)** — a corrida é o coração de um jogo multiusuário.
-3. **Cartas de evento (7)** — é o `shock` que já existe + narrativa; o professor vira
-   mestre de cena.
+3. ~~**Cartas de evento (7)**~~ ✅ feito — é o `shock` que já existe + narrativa; o
+   professor vira mestre de cena (ver `backend/app/core/market/news.py`).
 4. **Ticker de movimentações (18)** — o mercado ganha vida no primeiro minuto.
 5. **Ordem stop (1)** — a primeira "ferramenta de verdade" que o jogador aprende a usar.
 

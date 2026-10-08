@@ -12,6 +12,7 @@ export default function Market({
   points,
   ticker,
   destaques,
+  manchete,
   inflacao,
   me,
   positions,
@@ -146,13 +147,27 @@ export default function Market({
         </div>
 
         <div className="card">
-          {!ticker?.length && !destaques?.length ? (
+          {!ticker?.length && !destaques?.length && !manchete ? (
             <div className="empty">
               <span className="big">🫧</span>
               Nenhuma negociação nos últimos segundos…
             </div>
           ) : (
             <div className="ticker">
+              {/* 📰 manchete no topo: a notícia é a cena, não o número */}
+              {manchete && (
+                <div className="tick-row news" key={`news-${manchete.emitido_em}`}>
+                  <span className="emoji">{manchete.emoji}</span>
+                  <span className="what">
+                    <span className="news-chip">📰 manchete</span> {manchete.titulo}
+                  </span>
+                  <span className={`val num ${manchete.impacto >= 0 ? "up" : "down"}`}>
+                    {pct(manchete.impacto)}
+                  </span>
+                  <span className="when">agora</span>
+                </div>
+              )}
+
               {/* 🐋 baleias primeiro: o grande prêmio não pode se perder */}
               {(destaques || []).map((d) => (
                 <div className="tick-row whale" key={d.chave}>

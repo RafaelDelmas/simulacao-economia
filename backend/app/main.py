@@ -12,7 +12,7 @@ from app.core.error_handlers import register_exception_handlers
 from app.core.market.events import event_bus
 from app.core.market.orderbook import order_book
 from app.core.market.prune import prune_loop, prune_tudo
-from app.routers import health_router, item_router, user_router, commodity_router, order_router, auth_router, position_router
+from app.routers import health_router, item_router, user_router, commodity_router, news_router, order_router, auth_router, position_router
 
 # Logs da aplicação (INFO em diante). Sem isso nada daqui chega ao log do uvicorn.
 # O SQLAlchemy loga cada SQL em INFO: sem segurar, o arquivo inundaria.
@@ -49,6 +49,9 @@ async def _run_market_engine():
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    global _MAIN_LOOP
+    _MAIN_LOOP = asyncio.get_running_loop()
+
     # 1. Inicializa DB (tabelas) + seed (commodities + admin balance)
     init_db()
 
@@ -126,6 +129,7 @@ app.include_router(auth_router.router, prefix="/api")
 app.include_router(item_router.router, prefix="/api")
 app.include_router(user_router.router, prefix="/api")
 app.include_router(commodity_router.router, prefix="/api")
+app.include_router(news_router.router, prefix="/api")
 app.include_router(order_router.router, prefix="/api")
 app.include_router(position_router.router, prefix="/api")
 
@@ -133,6 +137,13 @@ app.include_router(position_router.router, prefix="/api")
 # --- WebSocket market ---
 import json
 from fastapi import WebSocket
+
+# Loop principal, guardado no lifespan: o event bus é síncrono e publica de
+# QUALQUER thread (engine e bots rodam no loop; endpoints FastAPI `def` rodam
+# na threadpool). `call_soon_threadsafe` é a única forma segura de agendar o
+# envio desses dois lados — sem isto, a manchete disparada pelo admin
+# (/api/news/disparar) era engolida pelo `except RuntimeError` e nunca saía.
+_MAIN_LOOP: asyncio.AbstractEventLoop | None = None
 
 
 @app.websocket("/ws/market")
@@ -143,6 +154,7 @@ async def ws_market(ws: WebSocket):
         "market.tick": lambda data: _ws_send_json(ws, data),
         "market.regime": lambda data: _ws_send_json(ws, data),
         "market.event": lambda data: _ws_send_json(ws, data),
+        "market.news": lambda data: _ws_send_json(ws, data),
         "tax.applied": lambda data: _ws_send_json(ws, data),
         "bot.activity": lambda data: _ws_send_json(ws, data),
     }
@@ -165,11 +177,19 @@ async def ws_market(ws: WebSocket):
 
 
 def _ws_send_json(ws: WebSocket, data: dict):
-    """Agenda o envio de JSON — o event bus é síncrono e `send_text` é async."""
+    """Agenda o envio de JSON — o event bus é síncrono e `send_text` é async.
+
+    Usa `call_soon_threadsafe` no loop principal: funciona tanto do loop
+    (engine/bots) quanto da threadpool dos endpoints (disparo manual de
+    manchete), sem nunca depender de um "running loop" na thread atual.
+    """
+    loop = _MAIN_LOOP
+    if loop is None or loop.is_closed():
+        return
     try:
-        asyncio.get_running_loop().create_task(_send_json(ws, data))
-    except RuntimeError:  # fora do event loop (não deve acontecer)
-        pass
+        loop.call_soon_threadsafe(lambda: loop.create_task(_send_json(ws, data)))
+    except RuntimeError:
+        pass  # loop morreu entre o check e o agendamento
 
 
 async def _send_json(ws: WebSocket, data: dict):

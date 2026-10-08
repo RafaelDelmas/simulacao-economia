@@ -594,7 +594,8 @@ button {
   letter-spacing: 0.03em;
 }
 
-.field input {
+.field input,
+.field select {
   width: 100%;
   background: var(--bg-2);
   border: 1px solid var(--line);
@@ -605,7 +606,8 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
-.field input:focus {
+.field input:focus,
+.field select:focus {
   border-color: var(--gold-dim);
   box-shadow: 0 0 0 3px rgba(242, 193, 78, 0.12);
 }
@@ -1245,6 +1247,21 @@ button {
   font-weight: 700;
 }
 
+/* 📰 manchete no feed (core/market/news.py) — a notícia entra como cena */
+.tick-row.news {
+  background: rgba(87, 166, 255, 0.1);
+  border-left: 2px solid var(--blue);
+  border-radius: 6px;
+}
+
+.news-chip {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--blue);
+  margin-right: 4px;
+}
+
 /* chip de humor do mercado (core/market/regimes.py) */
 .badge.regime {
   background: rgba(87, 166, 255, 0.12);
@@ -1310,6 +1327,66 @@ button {
 @keyframes fomoGlow {
   50% {
     border-color: var(--gold);
+  }
+}
+
+/* ---------------------------------------------------------------- manchete --
+   Carta de evento (market.news): banner "ÚLTIMA HORA" — cena, não número.
+   Paleta própria (azul/branco de jornal) pra não competir com o dourado
+   do FOMO nem com o vermelho/verde de preço. */
+.news-banner {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(87, 166, 255, 0.45);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    120deg,
+    rgba(87, 166, 255, 0.16),
+    rgba(87, 166, 255, 0.04)
+  );
+  color: var(--txt);
+  font-size: 13.5px;
+  text-align: left;
+  animation: newsIn 0.35s ease-out;
+}
+
+.news-ico {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.news-txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.news-tag {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--blue);
+}
+
+.news-txt b {
+  color: var(--txt);
+  font-size: 14.5px;
+}
+
+.news-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+@keyframes newsIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
   }
 }
 

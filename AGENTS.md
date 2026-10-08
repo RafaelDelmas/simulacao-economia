@@ -35,7 +35,8 @@ Stack do backend (pinado em `backend/requirements.txt`, Python 3.12):
 │       │   ├── auth.py           # get_current_user / get_current_admin
 │       │   ├── exceptions.py     # AppError e subclasses (404/409/401/403)
 │       │   ├── error_handlers.py # AppError -> JSON {"detail": ...}
-│       │   └── market/           # orderbook, engine, bots, events, taxes
+│       │   └── market/           # orderbook, engine, bots, events, taxes,
+│       │                         # regimes, news (cartas_evento.json)
 │       ├── routers/          # camada HTTP (validação + status code)
 │       ├── controllers/      # regras de negócio
 │       ├── models/           # SQLAlchemy (tabelas)
@@ -144,8 +145,10 @@ lifespan, então valida seed e engines também).
 | GET    | `/api/orders/open`, `/filled` | —         | `?commodity_id=&limit=` (limit 1..1000, padrão 200) |
 | POST   | `/api/orders/prune`         | **admin**   | roda o prune na hora (TTL das abertas — bot 5 min / jogador 10 h — + histórico/ticks) |
 | GET    | `/api/positions`            | Bearer      | carteira do jogador |
+| GET    | `/api/news`                 | —           | cartas de evento: config vigente, baralho, `proxima_em` e últimas disparadas (`ultimas[0]` = fallback do banner no polling) |
+| POST   | `/api/news/disparar`        | **admin**   | mestre de cena: dispara uma carta agora (`{id?}`; sem id sorteia como o automático). **404** id inexistente, **409** sem alvo |
 | GET/POST/PUT/DELETE | `/api/items`    | Bearer      | CRUD de exemplo |
-| WS     | `/ws/market`                | —           | envia `init`, `market.tick` (preços + `inflacao_indice` + `fomo`), `market.regime`, `market.event`, `bot.activity` (com `destaques` 🐋), `tax.applied` |
+| WS     | `/ws/market`                | —           | envia `init`, `market.tick` (preços + `inflacao_indice` + `fomo`), `market.regime`, `market.event`, `market.news` (manchete 📰), `bot.activity` (com `destaques` 🐋), `tax.applied` |
 
 Docs interativos: `/docs` e `/openapi.json`.
 
@@ -215,6 +218,22 @@ Em shutdown, o `finally` cancela a task do engine.
   e o clampeio não faria nada). O 🐋 lê o `executed_quantity` **acumulado da
   própria ordem** — o evento `order.executed` traz o tamanho do lado que
   zerou (quase sempre o pedaço miúdo que a baleia comeu).
+- **Cartas de evento (manchetes)** (`market/news.py` +
+  `market/cartas_evento.json`): `manchetes.tick()` roda no `BotActivity.cycle`
+  ao lado de `regimes.tick`; o efeito é o **mesmo `shock_prices`** do admin
+  (book → banco → `_refresh_display`/`PriceTick` → commit) e o payload
+  `market.news` vira o banner "📰 ÚLTIMA HORA". O JSON é **re-lido sem
+  reiniciar** (mtime checado no tick, no máx. 1x/5s — JSON inválido mantém a
+  última versão boa e loga warning). Impacto final = `impacto × uniform(0.75,
+  1.25)`; baralho sorteado por `peso` **excluindo as 3 últimas**; alvos por
+  nome literal, `["*"]` ou `["aleatoria"]` (congelada/inexistente é pulada com
+  log). Choque em commodity **no teto/piso da faixa** não move o preço exibido
+  (comportamento esperado da faixa ±30%, igual ao choque do admin).
+- **`_ws_send_json` usa `_MAIN_LOOP.call_soon_threadsafe`** (loop guardado no
+  `lifespan`): o event bus publica de qualquer thread e endpoints `def` do
+  FastAPI rodam na threadpool — com o antigo `asyncio.get_running_loop()` o
+  disparo manual de manchete (`/api/news/disparar`) morria num `except
+  RuntimeError` silencioso e a manchete nunca saía.
 
 ## Segurança / perfis
 

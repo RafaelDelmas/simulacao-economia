@@ -6,6 +6,7 @@ import {
   delJSON,
   getJSON,
   getSession,
+  pct,
   postJSON,
 } from "./api";
 import AdminMarket from "./components/AdminMarket";
@@ -45,8 +46,9 @@ export default function App() {
   const [book, setBook] = useState(null);
   const [aviso, setAviso] = useState("");
   const [toast, setToast] = useState(null);
-  // --- feed ao vivo do WebSocket (market.tick / regime / fomo / 🐋) ---
+  // --- feed ao vivo do WebSocket (market.tick / regime / fomo / 🐋 / 📰) ---
   const [fomo, setFomo] = useState(null); // {commodity_id, titulo, fim}
+  const [manchete, setManchete] = useState(null); // carta de evento {…, fim}
   const [destaques, setDestaques] = useState([]); // fills de baleia recentes
   const [inflacao, setInflacao] = useState(1); // índice Σbase desde o boot
   const [agora, setAgora] = useState(() => Date.now()); // pulso do contador
@@ -54,6 +56,7 @@ export default function App() {
   const visivel = useRef(true);
   const timerToast = useRef(null);
   const streakAnterior = useRef(undefined);
+  const mancheteVista = useRef(null); // dedup: WS + polling não repetem a mesma
 
   const semSessao = () => !getSession();
 
@@ -75,6 +78,25 @@ export default function App() {
     } catch (e) {
       if (semSessao()) return;
       setAviso(e.message || "Sem conexão com o backend.");
+    }
+    // Rede de segurança da manchete: se o WS caiu, o polling pega a última
+    // carta emitida (mesmo dedup por emitido_em do WS).
+    try {
+      const n = await getJSON("/news");
+      const ultima = (n.ultimas || [])[0];
+      if (
+        ultima &&
+        ultima.emitido_em > (mancheteVista.current || 0) &&
+        ultima.emitido_em * 1000 + (ultima.segundos || 18) * 1000 > Date.now()
+      ) {
+        mancheteVista.current = ultima.emitido_em;
+        setManchete({
+          ...ultima,
+          fim: Date.now() + (ultima.segundos || 18) * 1000,
+        });
+      }
+    } catch {
+      // /news é opcional: não derruba a carga principal por causa dele
     }
   }, []);
 
@@ -200,8 +222,21 @@ export default function App() {
         return;
       }
 
-      if (data.titulo && data.tipo) {
-        // market.event (janela FOMO)
+      if (data.tipo === "manchete") {
+        // market.news: carta de evento (manchete) — a cena do dia
+        if (data.emitido_em > (mancheteVista.current || 0)) {
+          mancheteVista.current = data.emitido_em;
+          setManchete({
+            ...data,
+            fim: Date.now() + (data.segundos || 18) * 1000,
+          });
+        }
+        return;
+      }
+
+      if (data.titulo && data.tipo === "fomo") {
+        // market.event (janela FOMO) — guard apertado: "manchete" também
+        // tem titulo+tipo e chegaria aqui por engano
         setFomo({
           commodity_id: data.commodity_id,
           titulo: data.titulo,
@@ -360,6 +395,8 @@ export default function App() {
   const segundosFomo = fomoAtiva
     ? Math.max(0, Math.ceil((fomoAtiva.fim - agora) / 1000))
     : 0;
+  // Manchete viva (carta de evento) — o relógio de 1s expira o banner sozinho
+  const mancheteAtiva = manchete && manchete.fim > agora ? manchete : null;
   // 🐋: só as fills dos últimos 20s (o polling re-renderiza e limpa as velhas)
   const destaquesFrescos = destaques.filter(
     (d) => Date.now() - d.recebidoEm < 20000,
@@ -400,6 +437,31 @@ export default function App() {
       {aviso && (
         <div className="section" style={{ paddingBottom: 0 }}>
           <div className="error-box">⚠️ {aviso}</div>
+        </div>
+      )}
+
+      {mancheteAtiva && (
+        <div className="section" style={{ paddingBottom: 0 }}>
+          <button
+            className="news-banner"
+            onClick={() =>
+              mancheteAtiva.commodity_id && abrirCommodity(mancheteAtiva.commodity_id)
+            }
+          >
+            <span className="news-ico">{mancheteAtiva.emoji}</span>
+            <span className="news-txt">
+              <span className="news-tag">📰 ÚLTIMA HORA</span>
+              <b>{mancheteAtiva.titulo}</b>
+              <span className="news-sub">
+                {mancheteAtiva.alvos
+                  .map(
+                    (a) =>
+                      `${a.name} ${a.impacto >= 0 ? "▲" : "▼"} ${pct(a.impacto)}`,
+                  )
+                  .join(" · ")}
+              </span>
+            </span>
+          </button>
         </div>
       )}
 
@@ -446,6 +508,7 @@ export default function App() {
             points={dados.points}
             ticker={dados.ticker}
             destaques={destaquesFrescos}
+            manchete={mancheteAtiva || null}
             inflacao={inflacao}
             me={dados.me || usuario}
             positions={dados.positions}

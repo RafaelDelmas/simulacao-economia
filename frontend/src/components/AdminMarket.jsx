@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { brl, iconFor, patchJSON, pct, postJSON } from "../api";
+import { brl, getJSON, iconFor, patchJSON, pct, postJSON } from "../api";
 
 const CHOQUES = [-10, -5, 5, 10];
 
@@ -12,13 +12,17 @@ const CHOQUES = [-10, -5, 5, 10];
  * - preço base: troca a âncora nominal e recorta o book na nova faixa;
  * - limpar book: cancela tudo que está aberto e volta o preço ao nominal;
  * - congelar/reabrir: congelada não aceita ordem nova (nem de bot);
- * - zerada geral: as três anteriores de uma vez, no mercado inteiro.
+ * - zerada geral: as três anteriores de uma vez, no mercado inteiro;
+ * - manchetes (cartas de evento): dispara uma notícia com choque na hora —
+ *   o professor vira mestre de cena.
  */
 export default function AdminMarket({ commodities, onToast, onRefresh }) {
   const [aberto, setAberto] = useState(null); // id da commodity expandida
   const [bases, setBases] = useState({}); // edições de preço base por id
   const [ocupado, setOcupado] = useState(null); // chave da ação em andamento
   const [conf, setConf] = useState(null); // ação destrutiva armada (2º toque)
+  const [cartas, setCartas] = useState([]); // baralho de cartas de evento
+  const [cartaSel, setCartaSel] = useState(""); // carta escolhida ("" = sorteio)
 
   // confirmação armada expira sozinha: toque perdido não destrói nada
   useEffect(() => {
@@ -26,6 +30,17 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
     const t = setTimeout(() => setConf(null), 5000);
     return () => clearTimeout(t);
   }, [conf]);
+
+  // Baralho de cartas de evento (público) — só pra popular o seletor
+  useEffect(() => {
+    let vivo = true;
+    getJSON("/news")
+      .then((n) => vivo && setCartas(n.cartas || []))
+      .catch(() => {}); // sem /news o resto da tela funciona igual
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   async function agir(chave, fn) {
     if (ocupado) return;
@@ -70,6 +85,11 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
     }
     agir("reset-geral", () => postJSON("/commodities/reset"));
   };
+
+  const dispararManchete = () =>
+    agir("manchete", () =>
+      postJSON("/news/disparar", cartaSel ? { id: cartaSel } : {}),
+    );
 
   const salvarBase = (c) => {
     const bruto = bases[c.id] ?? c.base_price;
@@ -192,6 +212,47 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
               </div>
             ))
           )}
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-title">
+          <h2>📰 Manchetes (cartas de evento)</h2>
+          <span className="hint">mestre de cena</span>
+        </div>
+
+        <div className="card form-card">
+          <p className="hint" style={{ margin: 0 }}>
+            Dispara uma notícia com choque de preço na hora — o banner
+            “ÚLTIMA HORA” aparece pra todo mundo. Sem carta escolhida, o
+            sorteio é o mesmo do automático (45–75 min).
+          </p>
+          <div className="field">
+            <label htmlFor="carta-sel">
+              <span>Carta</span>
+              <span>baralho em cartas_evento.json</span>
+            </label>
+            <select
+              id="carta-sel"
+              value={cartaSel}
+              onChange={(e) => setCartaSel(e.target.value)}
+            >
+              <option value="">🎲 sorteio aleatório</option>
+              {cartas.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.emoji} {c.titulo} ({c.impacto > 0 ? "+" : ""}
+                  {c.impacto}%)
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            className="btn btn-ghost"
+            disabled={ocupado !== null}
+            onClick={dispararManchete}
+          >
+            📰 Disparar manchete agora
+          </button>
         </div>
       </section>
 
