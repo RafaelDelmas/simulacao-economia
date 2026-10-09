@@ -47,10 +47,10 @@
     "jackpot_fator": 3.0
   },
   "produtores": {
-    "Carvão": { "emoji": "⛏️", "nome": "Mina de Carvão", "custo_compra": 400 },
-    "Aço": { "emoji": "🏭", "nome": "Usina Siderúrgica", "custo_compra": 950 },
-    "Trigo": { "emoji": "🌾", "nome": "Fazenda de Trigo", "custo_compra": 1600 },
-    "Algodão": { "emoji": "🌱", "nome": "Lavoura de Algodão", "custo_compra": 650 },
-    "Café": { "emoji": "☕", "nome": "Cafezal", "custo_compra": 1200 }
+    "Carvão": { "emoji": "⛏️", "nome": "Mina de Carvão", "custo_compra": 4000 },
+    "Aço": { "emoji": "🏭", "nome": "Usina Siderúrgica", "custo_compra": 9500 },
+    "Trigo": { "emoji": "🌾", "nome": "Fazenda de Trigo", "custo_compra": 16000 },
+    "Algodão": { "emoji": "🌱", "nome": "Lavoura de Algodão", "custo_compra": 6500 },
+    "Café": { "emoji": "☕", "nome": "Cafezal", "custo_compra": 12000 }
   }
 }
