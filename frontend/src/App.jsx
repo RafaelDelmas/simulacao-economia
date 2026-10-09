@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
-  brl,
   clearSession,
   delJSON,
+  erroTraduzido,
   getJSON,
   getSession,
+  money,
   pct,
   postJSON,
 } from "./api";
+import { mudaIdioma } from "./i18n/index.js";
 import AdminMarket from "./components/AdminMarket";
 import Commodity from "./components/Commodity";
 import Login from "./components/Login";
@@ -33,6 +36,7 @@ function agruparPontos(flat) {
 }
 
 export default function App() {
+  const { t, i18n } = useTranslation();
   const [usuario, setUsuario] = useState(() => getSession());
   const [aba, setAba] = useState(ABA_PADRAO);
   const [detalhe, setDetalhe] = useState(null);
@@ -79,7 +83,7 @@ export default function App() {
       setAviso("");
     } catch (e) {
       if (semSessao()) return;
-      setAviso(e.message || "Sem conexão com o backend.");
+      setAviso(erroTraduzido(t, e, "Sem conexão com o backend."));
     }
     // Indústria: separado de propósito — se /produtoras falhar (backend
     // antigo, por exemplo), o mercado e a carteira não caem junto.
@@ -108,7 +112,7 @@ export default function App() {
     } catch {
       // /news é opcional: não derruba a carga principal por causa dele
     }
-  }, []);
+  }, [t]); // `t` nas deps: os avisos mudam de idioma junto
 
   /** Carga lenta: série histórica dos gráficos. */
   const carregarHistorico = useCallback(async () => {
@@ -258,7 +262,9 @@ export default function App() {
       if (data.rate_percent !== undefined) {
         // tax.applied: a hora de agir (dinheiro parado derretendo)
         mostrarToast(
-          `💸 Inflação de ${data.rate_percent}% aplicada — dinheiro parado perde valor`,
+          t("💸 Inflação de {{r}}% aplicada — dinheiro parado perde valor", {
+            r: data.rate_percent,
+          }),
           "err",
         );
         return;
@@ -306,7 +312,7 @@ export default function App() {
         ws.close();
       }
     };
-  }, [usuario, mostrarToast]);
+  }, [usuario, mostrarToast, t]);
 
   /* ------------------------------------------------- combo 🔥 do streak -- */
 
@@ -316,9 +322,9 @@ export default function App() {
     const antes = streakAnterior.current;
     streakAnterior.current = s;
     if (antes === undefined || antes === s) return;
-    if (s > antes) mostrarToast(`🔥 Combo de vendas lucrativas: x${s}`, "ok");
-    else if (s === 0) mostrarToast("💔 Combo perdido!", "err");
-  }, [dados.me?.streak, mostrarToast]);
+    if (s > antes) mostrarToast(t("🔥 Combo de vendas lucrativas: x{{n}}", { n: s }), "ok");
+    else if (s === 0) mostrarToast(t("💔 Combo perdido!"), "err");
+  }, [dados.me?.streak, mostrarToast, t]);
 
   /* --------------------------------------- contagem do banner FOMO -- */
 
@@ -333,18 +339,18 @@ export default function App() {
       try {
         const ordem = await postJSON("/orders", payload);
         mostrarToast(
-          ordem.filled ? "Executada! ⚡" : "Ordem enviada ao book ✅",
+          ordem.filled ? t("Executada! ⚡") : t("Ordem enviada ao book ✅"),
           "ok",
         );
         carregar();
         carregarHistorico();
         return true;
       } catch (e) {
-        mostrarToast(e.message || "Não foi possível enviar a ordem.", "err");
+        mostrarToast(erroTraduzido(t, e, "Não foi possível enviar a ordem."), "err");
         return false;
       }
     },
-    [carregar, carregarHistorico, mostrarToast],
+    [carregar, carregarHistorico, mostrarToast, t],
   );
 
   /** Cancela uma ordem aberta (o backend some do book e do banco junto). */
@@ -352,15 +358,15 @@ export default function App() {
     async (id) => {
       try {
         await delJSON(`/orders/${id}`);
-        mostrarToast("Ordem cancelada ✖️", "ok");
+        mostrarToast(t("Ordem cancelada ✖️"), "ok");
         await carregar();
         return true;
       } catch (e) {
-        mostrarToast(e.message || "Não foi possível cancelar a ordem.", "err");
+        mostrarToast(erroTraduzido(t, e, "Não foi possível cancelar a ordem."), "err");
         return false;
       }
     },
-    [carregar, mostrarToast],
+    [carregar, mostrarToast, t],
   );
 
   /* -------------------------------------------- ações das produtoras -- */
@@ -369,15 +375,15 @@ export default function App() {
     async (commodityId) => {
       try {
         const p = await postJSON("/produtoras/comprar", { commodity_id: commodityId });
-        mostrarToast(`${p.emoji} ${p.nome} comprada!`, "ok");
+        mostrarToast(`${p.emoji} ${t(p.nome)} ${t("comprada!")}`, "ok");
         carregar();
         return true;
       } catch (e) {
-        mostrarToast(e.message || "Não foi possível comprar.", "err");
+        mostrarToast(erroTraduzido(t, e, "Não foi possível comprar."), "err");
         return false;
       }
     },
-    [carregar, mostrarToast],
+    [carregar, mostrarToast, t],
   );
 
   /** Um clique: devolve o resultado pra UI animar (floater) sem esperar o poll. */
@@ -401,26 +407,29 @@ export default function App() {
         }));
         return r;
       } catch (e) {
-        mostrarToast(e.message || "Não foi possível produzir.", "err");
+        mostrarToast(erroTraduzido(t, e, "Não foi possível produzir."), "err");
         return null;
       }
     },
-    [mostrarToast],
+    [mostrarToast, t],
   );
 
   const melhorarProdutora = useCallback(
     async (producerId) => {
       try {
         const p = await postJSON(`/produtoras/${producerId}/melhorar`);
-        mostrarToast(`${p.emoji} ${p.nome} subiu pro nível ${p.nivel}! 🚀`, "ok");
+        mostrarToast(
+          `${p.emoji} ${t(p.nome)} ${t("subiu pro nível {{n}}! 🚀", { n: p.nivel })}`,
+          "ok",
+        );
         carregar();
         return true;
       } catch (e) {
-        mostrarToast(e.message || "Não foi possível melhorar.", "err");
+        mostrarToast(erroTraduzido(t, e, "Não foi possível melhorar."), "err");
         return false;
       }
     },
-    [carregar, mostrarToast],
+    [carregar, mostrarToast, t],
   );
 
   function sair() {
@@ -459,8 +468,10 @@ export default function App() {
   // Janela FOMO viva (o `agora` de 1s faz a contagem descer)
   const fomoAtiva = fomo && fomo.fim > agora ? fomo : null;
   const nomeFomo = fomoAtiva
-    ? dados.commodities.find((c) => c.id === fomoAtiva.commodity_id)?.name ||
-      "#?"
+    ? t(
+        dados.commodities.find((c) => c.id === fomoAtiva.commodity_id)?.name ||
+          "#?",
+      )
     : "";
   const segundosFomo = fomoAtiva
     ? Math.max(0, Math.ceil((fomoAtiva.fim - agora) / 1000))
@@ -473,13 +484,15 @@ export default function App() {
   );
 
   const abas = [
-    { id: "mercado", icone: "🏪", rotulo: "Mercado" },
-    { id: "industria", icone: "🏭", rotulo: "Indústria" },
-    { id: "carteira", icone: "💼", rotulo: "Carteira" },
+    { id: "mercado", icone: "🏪", rotulo: t("Mercado") },
+    { id: "industria", icone: "🏭", rotulo: t("Indústria") },
+    { id: "carteira", icone: "💼", rotulo: t("Carteira") },
     ...(usuario.is_admin
       ? [{ id: "admin", icone: "🛠️", rotulo: "Admin" }]
       : []),
   ];
+
+  const outroIdioma = i18n.language === "en" ? "pt" : "en";
 
   return (
     <div className="shell">
@@ -487,8 +500,8 @@ export default function App() {
         <div className="brand">
           <div className="brand-mark">📈</div>
           <div className="brand-text">
-            <b>Bolsa de Commodities</b>
-            <span>mercado simulado</span>
+            <b>{t("Bolsa de Commodities")}</b>
+            <span>{t("mercado simulado")}</span>
           </div>
         </div>
         <div className="topbar-user">
@@ -496,11 +509,19 @@ export default function App() {
             className="num"
             style={{ color: "var(--gold)", fontWeight: 700 }}
           >
-            {brl(dados.me?.balance ?? usuario.balance ?? 0)}
+            {money(dados.me?.balance ?? usuario.balance ?? 0)}
           </span>
           <span className="who">{usuario.username}</span>
-          <button className="chip" onClick={sair} aria-label="sair da conta">
-            sair
+          <button
+            className="chip"
+            onClick={() => mudaIdioma(outroIdioma)}
+            aria-label={t("mudar idioma")}
+            title={t("mudar idioma")}
+          >
+            {i18n.language === "en" ? "🇬🇧 EN" : "🇧🇷 PT"}
+          </button>
+          <button className="chip" onClick={sair} aria-label={t("sair da conta")}>
+            {t("sair")}
           </button>
         </div>
       </header>
@@ -521,13 +542,13 @@ export default function App() {
           >
             <span className="news-ico">{mancheteAtiva.emoji}</span>
             <span className="news-txt">
-              <span className="news-tag">📰 ÚLTIMA HORA</span>
+              <span className="news-tag">{t("📰 ÚLTIMA HORA")}</span>
               <b>{mancheteAtiva.titulo}</b>
               <span className="news-sub">
                 {mancheteAtiva.alvos
                   .map(
                     (a) =>
-                      `${a.name} ${a.impacto >= 0 ? "▲" : "▼"} ${pct(a.impacto)}`,
+                      `${t(a.name)} ${a.impacto >= 0 ? "▲" : "▼"} ${pct(a.impacto)}`,
                   )
                   .join(" · ")}
               </span>
@@ -544,8 +565,8 @@ export default function App() {
           >
             <span className="fomo-ico">⚡</span>
             <span className="fomo-txt">
-              <b>{fomoAtiva.titulo}</b> em {nomeFomo} — pressão de compra
-              forte!
+              <b>{fomoAtiva.titulo}</b>{" "}
+              {t("em {{nome}} — pressão de compra forte!", { nome: nomeFomo })}
             </span>
             <span className="fomo-timer num">{segundosFomo}s</span>
           </button>
@@ -569,7 +590,7 @@ export default function App() {
             <section className="section">
               <div className="empty">
                 <span className="big">⏳</span>
-                Carregando o mercado…
+                {t("Carregando o mercado…")}
               </div>
             </section>
           )
@@ -617,14 +638,14 @@ export default function App() {
 
       {!detalhe && (
         <nav className="tabbar">
-          {abas.map((t) => (
+          {abas.map((abaItem) => (
             <button
-              key={t.id}
-              className={aba === t.id ? "on" : ""}
-              onClick={() => setAba(t.id)}
+              key={abaItem.id}
+              className={aba === abaItem.id ? "on" : ""}
+              onClick={() => setAba(abaItem.id)}
             >
-              <span className="ico">{t.icone}</span>
-              {t.rotulo}
+              <span className="ico">{abaItem.icone}</span>
+              {abaItem.rotulo}
             </button>
           ))}
         </nav>

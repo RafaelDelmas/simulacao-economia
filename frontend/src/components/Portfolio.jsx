@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
-import { brl, iconFor, MAX_ORDENS_ABERTAS, num, pct, timeAgo } from "../api";
+import { money, iconFor, MAX_ORDENS_ABERTAS, num, pct, timeAgo } from "../api";
 
 /**
  * Carteira: quanto dinheiro você tem, quanto está em estoque e o que está
@@ -15,6 +16,7 @@ export default function Portfolio({
   onOpen,
   onCancel,
 }) {
+  const { t } = useTranslation();
   const [confirmando, setConfirmando] = useState(null);
 
   const saldo = Number(me?.balance || 0);
@@ -31,14 +33,14 @@ export default function Portfolio({
   const abertas = mine?.open || [];
   const executadas = (mine?.filled || []).slice(0, 12);
   const nomeDe = (id) =>
-    commodities?.find((c) => c.id === id)?.name || `#${id}`;
+    t(commodities?.find((c) => c.id === id)?.name || `#${id}`);
 
   // a confirmação expira sozinha: toque perdido não cancela nada
   // (mesmo padrão do painel de usuários)
   useEffect(() => {
     if (!confirmando) return;
-    const t = setTimeout(() => setConfirmando(null), 5000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setConfirmando(null), 5000);
+    return () => clearTimeout(timer);
   }, [confirmando]);
 
   /** Cancelamento em dois toques: o primeiro arma, o segundo executa. */
@@ -55,24 +57,24 @@ export default function Portfolio({
     <>
       <div className="balance-hero">
         <div className="balance-card accent">
-          <div className="label">Saldo</div>
-          <div className="value num">{brl(saldo)}</div>
-          <div className="sub">livre para usar</div>
+          <div className="label">{t("Saldo")}</div>
+          <div className="value num">{money(saldo)}</div>
+          <div className="sub">{t("livre para usar")}</div>
         </div>
         <div className="balance-card">
-          <div className="label">Patrimônio</div>
-          <div className="value num">{brl(patrimonio)}</div>
+          <div className="label">{t("Patrimônio")}</div>
+          <div className="value num">{money(patrimonio)}</div>
           <div className="sub num">
-            estoque {brl(estoque)}
+            {t("estoque {{v}}", { v: money(estoque) })}
             {indice > 1.0005 && (
               <>
                 {" · "}
                 <span
                   className="down"
-                  title="poder de compra desde o início da rodada"
+                  title={t("poder de compra desde o início da rodada")}
                 >
-                  💸 inflação {pct((indice - 1) * 100)} · real{" "}
-                  {brl(patrimonioReal)}
+                  💸 {t("inflação {{v}}", { v: pct((indice - 1) * 100) })} ·{" "}
+                  {t("real {{v}}", { v: money(patrimonioReal) })}
                 </span>
               </>
             )}
@@ -82,16 +84,16 @@ export default function Portfolio({
 
       <section className="section">
         <div className="section-title">
-          <h2>Resultado</h2>
-          <span className="hint">marcação a mercado</span>
+          <h2>{t("Resultado")}</h2>
+          <span className="hint">{t("marcação a mercado")}</span>
         </div>
         <div className="card">
           {streak > 0 && (
             <div className="list-row">
               <span className="grow">
-                <span className="title">🔥 Combo de vendas lucrativas</span>
+                <span className="title">{t("🔥 Combo de vendas lucrativas")}</span>
                 <span className="sub">
-                  venda no lucro aumenta · no prejuízo zera
+                  {t("venda no lucro aumenta · no prejuízo zera")}
                 </span>
               </span>
               <span className="right">
@@ -101,15 +103,18 @@ export default function Portfolio({
           )}
           <div className="list-row">
             <span className="grow">
-              <span className="title">Lucro / prejuízo</span>
+              <span className="title">{t("Lucro / prejuízo")}</span>
               <span className="sub num">
-                pago {brl(custo)} · agora vale {brl(estoque)}
+                {t("pago {{a}} · agora vale {{b}}", {
+                  a: money(custo),
+                  b: money(estoque),
+                })}
               </span>
             </span>
             <span className="right">
               <span className={`big num ${resultado >= 0 ? "up" : "down"}`}>
                 {resultado >= 0 ? "+" : ""}
-                {brl(resultado)}
+                {money(resultado)}
               </span>
               <span className="small num">
                 {custo > 0
@@ -123,17 +128,17 @@ export default function Portfolio({
 
       <section className="section">
         <div className="section-title">
-          <h2>Seu estoque</h2>
-          <span className="hint">toque para negociar</span>
+          <h2>{t("Seu estoque")}</h2>
+          <span className="hint">{t("toque para negociar")}</span>
         </div>
 
         <div className="card">
           {!positions?.length ? (
             <div className="empty">
               <span className="big">🧺</span>
-              Sua carteira está vazia.
+              {t("Sua carteira está vazia.")}
               <br />
-              Compre sua primeira commodity no mercado.
+              {t("Compre sua primeira commodity no mercado.")}
             </div>
           ) : (
             positions.map((p) => (
@@ -144,17 +149,20 @@ export default function Portfolio({
               >
                 <span style={{ fontSize: 20 }}>{iconFor(p.name)}</span>
                 <span className="grow">
-                  <span className="title">{p.name}</span>
+                  <span className="title">{t(p.name)}</span>
                   <span className="sub num">
-                    {num(p.quantity, 0, 3)} un · média {brl(p.avg_price)} ·
-                    atual {brl(p.current_price)}
+                    {t("{{qtd}} un · média {{a}} · atual {{b}}", {
+                      qtd: num(p.quantity, 0, 3),
+                      a: money(p.avg_price),
+                      b: money(p.current_price),
+                    })}
                   </span>
                 </span>
                 <span className="right">
-                  <span className="big num">{brl(p.valor)}</span>
+                  <span className="big num">{money(p.valor)}</span>
                   <span className={`small num ${p.lucro >= 0 ? "up" : "down"}`}>
                     {p.lucro >= 0 ? "+" : ""}
-                    {brl(p.lucro)}
+                    {money(p.lucro)}
                   </span>
                 </span>
               </button>
@@ -165,17 +173,19 @@ export default function Portfolio({
 
       <section className="section">
         <div className="section-title">
-          <h2>Ordens abertas</h2>
+          <h2>{t("Ordens abertas")}</h2>
           <span className="hint">
-            {abertas.length}/{MAX_ORDENS_ABERTAS} ordens · expiram em 10h ·
-            toque ✖ para cancelar
+            {t("{{n}}/{{max}} ordens · expiram em 10h · toque ✖ para cancelar", {
+              n: abertas.length,
+              max: MAX_ORDENS_ABERTAS,
+            })}
           </span>
         </div>
         <div className="card">
           {!abertas.length ? (
             <div className="empty">
               <span className="big">🕊️</span>
-              Nenhuma ordem esperando no book.
+              {t("Nenhuma ordem esperando no book.")}
             </div>
           ) : (
             abertas.map((o) => (
@@ -187,19 +197,24 @@ export default function Portfolio({
                   <span className="title">
                     {nomeDe(o.commodity_id)}{" "}
                     <span className="badge open">
-                      {o.side === "bid" ? "compra" : "venda"}
+                      {o.side === "bid" ? t("compra") : t("venda")}
                     </span>
                   </span>
                   <span className="sub num">
-                    restam {num(o.quantity, 0, 3)} un a {brl(o.price)} ·{" "}
-                    {timeAgo(o.created_at)}
+                    {t("restam {{qtd}} un a {{preco}}", {
+                      qtd: num(o.quantity, 0, 3),
+                      preco: money(o.price),
+                    })}{" "}
+                    · {timeAgo(o.created_at)}
                   </span>
                 </button>
                 <button
                   className={confirmando === o.id ? "chip danger on" : "chip"}
                   onClick={() => toqueCancelar(o)}
                 >
-                  {confirmando === o.id ? "cancelar mesmo?" : "✖ cancelar"}
+                  {confirmando === o.id
+                    ? t("cancelar mesmo?")
+                    : t("✖ cancelar")}
                 </button>
               </div>
             ))
@@ -209,14 +224,14 @@ export default function Portfolio({
 
       <section className="section">
         <div className="section-title">
-          <h2>Histórico</h2>
-          <span className="hint">suas execuções</span>
+          <h2>{t("Histórico")}</h2>
+          <span className="hint">{t("suas execuções")}</span>
         </div>
         <div className="card">
           {!executadas.length ? (
             <div className="empty">
               <span className="big">📜</span>
-              Suas ordens executadas aparecem aqui.
+              {t("Suas ordens executadas aparecem aqui.")}
             </div>
           ) : (
             executadas.map((o) => (
@@ -225,11 +240,12 @@ export default function Portfolio({
                   <span className="title">
                     {nomeDe(o.commodity_id)}{" "}
                     <span className="badge done">
-                      {o.side === "bid" ? "comprou" : "vendeu"}
+                      {o.side === "bid" ? t("comprou") : t("vendeu")}
                     </span>
                   </span>
                   <span className="sub num">
-                    a {brl(o.price)} · {timeAgo(o.created_at)}
+                    {t("a {{preco}}", { preco: money(o.price) })} ·{" "}
+                    {timeAgo(o.created_at)}
                   </span>
                 </span>
               </div>

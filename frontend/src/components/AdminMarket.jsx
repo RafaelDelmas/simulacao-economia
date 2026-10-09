@@ -1,6 +1,16 @@
 import { useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 
-import { brl, getJSON, iconFor, patchJSON, pct, postJSON } from "../api";
+import {
+  money,
+  erroTraduzido,
+  getJSON,
+  iconFor,
+  patchJSON,
+  pct,
+  postJSON,
+  traduzDetalhe,
+} from "../api";
 
 const CHOQUES = [-10, -5, 5, 10];
 
@@ -17,6 +27,7 @@ const CHOQUES = [-10, -5, 5, 10];
  *   o professor vira mestre de cena.
  */
 export default function AdminMarket({ commodities, onToast, onRefresh }) {
+  const { t } = useTranslation();
   const [aberto, setAberto] = useState(null); // id da commodity expandida
   const [bases, setBases] = useState({}); // edições de preço base por id
   const [ocupado, setOcupado] = useState(null); // chave da ação em andamento
@@ -27,8 +38,8 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
   // confirmação armada expira sozinha: toque perdido não destrói nada
   useEffect(() => {
     if (!conf) return;
-    const t = setTimeout(() => setConf(null), 5000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setConf(null), 5000);
+    return () => clearTimeout(timer);
   }, [conf]);
 
   // Baralho de cartas de evento (público) — só pra popular o seletor
@@ -47,10 +58,10 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
     setOcupado(chave);
     try {
       const r = await fn();
-      onToast?.(r?.detail || "Intervenção aplicada", "ok");
+      onToast?.(traduzDetalhe(t, r) || t("Intervenção aplicada"), "ok");
       await onRefresh?.();
     } catch (e) {
-      onToast?.(e.message || "Falha na intervenção.", "err");
+      onToast?.(erroTraduzido(t, e, "Falha na intervenção."), "err");
     } finally {
       setOcupado(null);
       setConf(null);
@@ -95,7 +106,7 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
     const bruto = bases[c.id] ?? c.base_price;
     const v = Number(bruto);
     if (!Number.isFinite(v) || v <= 0) {
-      onToast?.("Preço base precisa ser maior que zero.", "err");
+      onToast?.(t("Preço base precisa ser maior que zero."), "err");
       return;
     }
     agir(`base-${c.id}`, async () => {
@@ -105,7 +116,12 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
         delete n[c.id];
         return n;
       });
-      return { detail: `${r.name}: nominal em ${brl(r.base_price)}` };
+      return {
+        detail: t("{{nome}}: nominal em {{v}}", {
+          nome: t(r.name),
+          v: money(r.base_price),
+        }),
+      };
     });
   };
 
@@ -115,13 +131,13 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
     <>
       <section className="section">
         <div className="section-title">
-          <h2>Intervenções no mercado</h2>
+          <h2>{t("Intervenções no mercado")}</h2>
           <span className="hint">admin</span>
         </div>
 
         <div className="card">
           {lista.length === 0 ? (
-            <div className="empty">Carregando o mercado…</div>
+            <div className="empty">{t("Carregando o mercado…")}</div>
           ) : (
             lista.map((c) => (
               <div className="adm-item" key={c.id}>
@@ -131,15 +147,19 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
                 >
                   <span className="grow">
                     <span className="title">
-                      {iconFor(c.name)} {c.name}
-                      {c.is_frozen && <span className="badge off">suspenso</span>}
+                      {iconFor(c.name)} {t(c.name)}
+                      {c.is_frozen && (
+                        <span className="badge off">{t("suspenso")}</span>
+                      )}
                     </span>
                     <span className="sub">
-                      nominal {brl(c.base_price)} · toque pra intervir
+                      {t("nominal {{v}} · toque pra intervir", {
+                        v: money(c.base_price),
+                      })}
                     </span>
                   </span>
                   <span className="right">
-                    <span className="big num">{brl(c.current_price)}</span>
+                    <span className="big num">{money(c.current_price)}</span>
                     <span className="small">{pct(c.variation_24h)}</span>
                   </span>
                 </button>
@@ -147,7 +167,7 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
                 {aberto === c.id && (
                   <div className="adm-panel">
                     <span className="hint">
-                      Choque de preço (empurra o book inteiro)
+                      {t("Choque de preço (empurra o book inteiro)")}
                     </span>
                     <div className="chips">
                       {CHOQUES.map((p) => (
@@ -164,8 +184,8 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
 
                     <div className="field">
                       <label htmlFor={`base-${c.id}`}>
-                        <span>Preço base (âncora nominal)</span>
-                        <span>o book é recortado na nova faixa</span>
+                        <span>{t("Preço base (âncora nominal)")}</span>
+                        <span>{t("o book é recortado na nova faixa")}</span>
                       </label>
                       <input
                         id={`base-${c.id}`}
@@ -186,7 +206,7 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
                         disabled={ocupado !== null}
                         onClick={() => salvarBase(c)}
                       >
-                        salvar nominal
+                        {t("salvar nominal")}
                       </button>
                       <button
                         className={
@@ -196,15 +216,15 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
                         onClick={() => limparBook(c)}
                       >
                         {conf === `limpa-${c.id}`
-                          ? "cancelar tudo?"
-                          : "🧹 limpar book"}
+                          ? t("cancelar tudo?")
+                          : t("🧹 limpar book")}
                       </button>
                       <button
                         className={c.is_frozen ? "chip on" : "chip"}
                         disabled={ocupado !== null}
                         onClick={() => congelar(c)}
                       >
-                        {c.is_frozen ? "▶ reabrir" : "🧊 congelar"}
+                        {c.is_frozen ? t("▶ reabrir") : t("🧊 congelar")}
                       </button>
                     </div>
                   </div>
@@ -217,27 +237,27 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
 
       <section className="section">
         <div className="section-title">
-          <h2>📰 Manchetes (cartas de evento)</h2>
-          <span className="hint">mestre de cena</span>
+          <h2>{t("📰 Manchetes (cartas de evento)")}</h2>
+          <span className="hint">{t("mestre de cena")}</span>
         </div>
 
         <div className="card form-card">
           <p className="hint" style={{ margin: 0 }}>
-            Dispara uma notícia com choque de preço na hora — o banner
-            “ÚLTIMA HORA” aparece pra todo mundo. Sem carta escolhida, o
-            sorteio é o mesmo do automático (45–75 min).
+            {t(
+              "Dispara uma notícia com choque de preço na hora — o banner “ÚLTIMA HORA” aparece pra todo mundo. Sem carta escolhida, o sorteio é o mesmo do automático (45–75 min).",
+            )}
           </p>
           <div className="field">
             <label htmlFor="carta-sel">
-              <span>Carta</span>
-              <span>baralho em cartas_evento.json</span>
+              <span>{t("Carta")}</span>
+              <span>{t("baralho em cartas_evento.json")}</span>
             </label>
             <select
               id="carta-sel"
               value={cartaSel}
               onChange={(e) => setCartaSel(e.target.value)}
             >
-              <option value="">🎲 sorteio aleatório</option>
+              <option value="">{t("🎲 sorteio aleatório")}</option>
               {cartas.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.emoji} {c.titulo} ({c.impacto > 0 ? "+" : ""}
@@ -251,21 +271,23 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
             disabled={ocupado !== null}
             onClick={dispararManchete}
           >
-            📰 Disparar manchete agora
+            📰 {t("Disparar manchete agora")}
           </button>
         </div>
       </section>
 
       <section className="section">
         <div className="section-title">
-          <h2>Zona de perigo</h2>
+          <h2>{t("Zona de perigo")}</h2>
           <span className="hint">admin</span>
         </div>
 
         <div className="card form-card">
           <p className="hint" style={{ margin: 0 }}>
-            Cancela <b>todas</b> as ordens abertas e devolve os preços ao
-            nominal. O histórico de negociações fica — o gráfico mostra a queda.
+            <Trans
+              i18nKey="Cancela <b>todas</b> as ordens abertas e devolve os preços ao nominal. O histórico de negociações fica — o gráfico mostra a queda."
+              components={{ b: <b /> }}
+            />
           </p>
           <button
             className={conf === "reset-geral" ? "btn btn-danger" : "btn btn-ghost"}
@@ -273,8 +295,8 @@ export default function AdminMarket({ commodities, onToast, onRefresh }) {
             onClick={zerarTudo}
           >
             {conf === "reset-geral"
-              ? "⚠️ confirmar zerada geral"
-              : "Zerar todo o mercado"}
+              ? t("⚠️ confirmar zerada geral")
+              : t("Zerar todo o mercado")}
           </button>
         </div>
       </section>

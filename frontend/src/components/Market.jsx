@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Sparkline } from "./Chart";
-import { brl, iconFor, num, pct, REGIME_LABEL, timeAgo } from "../api";
+import { iconFor, money, num, pct, regimeLabel, timeAgo } from "../api";
 
 /**
  * Tela principal: quanto você tem, o mercado inteiro e o que está acontecendo
@@ -18,6 +19,7 @@ export default function Market({
   positions,
   onOpen,
 }) {
+  const { t } = useTranslation();
   const anterior = useRef({});
   const dirs = {};
 
@@ -43,28 +45,31 @@ export default function Market({
     <>
       <div className="balance-hero">
         <div className="balance-card accent">
-          <div className="label">Saldo</div>
-          <div className="value num">{brl(saldo)}</div>
-          <div className="sub">dinheiro em caixa</div>
+          <div className="label">{t("Saldo")}</div>
+          <div className="value num">{money(saldo)}</div>
+          <div className="sub">{t("dinheiro em caixa")}</div>
         </div>
         <div className="balance-card">
-          <div className="label">Patrimônio</div>
-          <div className="value num">{brl(patrimonio)}</div>
+          <div className="label">{t("Patrimônio")}</div>
+          <div className="value num">{money(patrimonio)}</div>
           <div className="sub num">
-            estoque {brl(estoque)}
+            {t("estoque {{v}}", { v: money(estoque) })}
             {resultado !== 0 && (
               <>
                 {" · "}
                 <span className={resultado >= 0 ? "up" : "down"}>
                   {resultado >= 0 ? "+" : ""}
-                  {brl(resultado)}
+                  {money(resultado)}
                 </span>
               </>
             )}
             {inflacao > 1.0005 && (
               <>
                 {" · "}
-                <span className="down" title="poder de compra desde o início da rodada">
+                <span
+                  className="down"
+                  title={t("poder de compra desde o início da rodada")}
+                >
                   💸 {pct((inflacao - 1) * 100)}
                 </span>
               </>
@@ -75,17 +80,17 @@ export default function Market({
 
       <section className="section">
         <div className="section-title">
-          <h2>Mercado</h2>
+          <h2>{t("Mercado")}</h2>
           <span className="hint">
             <span className="live-dot" />
-            ao vivo · toque para negociar
+            {t("ao vivo · toque para negociar")}
           </span>
         </div>
 
         {!commodities?.length ? (
           <div className="empty">
             <span className="big">⏳</span>
-            Carregando as commodities…
+            {t("Carregando as commodities…")}
           </div>
         ) : (
           <div className="commodity-grid">
@@ -104,13 +109,15 @@ export default function Market({
                 >
                   <div className="head">
                     <span className="icon">{iconFor(c.name)}</span>
-                    <span className="name">{c.name}</span>
+                    <span className="name">{t(c.name)}</span>
                     {c.regime && c.regime !== "calmo" && (
                       <span className={`badge regime ${c.regime}`}>
-                        {REGIME_LABEL[c.regime] || c.regime}
+                        {regimeLabel(c.regime)}
                       </span>
                     )}
-                    {c.is_frozen && <span className="badge off">suspenso</span>}
+                    {c.is_frozen && (
+                      <span className="badge off">{t("suspenso")}</span>
+                    )}
                   </div>
 
                   <div className="price num">
@@ -124,7 +131,7 @@ export default function Market({
                             : ""
                       }
                     >
-                      {brl(c.current_price)}
+                      {money(c.current_price)}
                     </span>
                     <span className={`pill ${classe}`}>{pct(varia)}</span>
                   </div>
@@ -142,15 +149,15 @@ export default function Market({
 
       <section className="section">
         <div className="section-title">
-          <h2>Movimentações</h2>
-          <span className="hint">últimas trocas</span>
+          <h2>{t("Movimentações")}</h2>
+          <span className="hint">{t("últimas trocas")}</span>
         </div>
 
         <div className="card">
           {!ticker?.length && !destaques?.length && !manchete ? (
             <div className="empty">
               <span className="big">🫧</span>
-              Nenhuma negociação nos últimos segundos…
+              {t("Nenhuma negociação nos últimos segundos…")}
             </div>
           ) : (
             <div className="ticker">
@@ -159,12 +166,13 @@ export default function Market({
                 <div className="tick-row news" key={`news-${manchete.emitido_em}`}>
                   <span className="emoji">{manchete.emoji}</span>
                   <span className="what">
-                    <span className="news-chip">📰 manchete</span> {manchete.titulo}
+                    <span className="news-chip">{t("📰 manchete")}</span>{" "}
+                    {manchete.titulo}
                   </span>
                   <span className={`val num ${manchete.impacto >= 0 ? "up" : "down"}`}>
                     {pct(manchete.impacto)}
                   </span>
-                  <span className="when">agora</span>
+                  <span className="when">{t("agora")}</span>
                 </div>
               )}
 
@@ -173,18 +181,20 @@ export default function Market({
                 <div className="tick-row whale" key={d.chave}>
                   <span className="emoji">🐋</span>
                   <span className="what">
-                    {nomeDe(d, commodities)}{" "}
+                    {t(nomeDe(d, commodities))}{" "}
                     <span className="qty">
-                      baleia {d.side === "bid" ? "comprou" : "vendeu"}{" "}
-                      {num(d.quantity, 0, 2)} un
+                      {t("baleia {{acao}} {{qtd}} un", {
+                        acao: d.side === "bid" ? t("comprou") : t("vendeu"),
+                        qtd: num(d.quantity, 0, 2),
+                      })}
                     </span>
                   </span>
                   <span
                     className={`val num ${d.side === "bid" ? "up" : "down"}`}
                   >
-                    {brl(d.price)}
+                    {money(d.price)}
                   </span>
-                  <span className="when">agora</span>
+                  <span className="when">{t("agora")}</span>
                 </div>
               ))}
 
@@ -192,16 +202,16 @@ export default function Market({
                 <div className="tick-row" key={o.id}>
                   <span className="emoji">{iconFor(nomeDe(o, commodities))}</span>
                   <span className="what">
-                    {nomeDe(o, commodities)}{" "}
+                    {t(nomeDe(o, commodities))}{" "}
                     <span className="qty">
-                      {o.side === "bid" ? "comprou" : "vendeu"}
+                      {o.side === "bid" ? t("comprou") : t("vendeu")}
                       {Number(o.executed_quantity) > 0
-                        ? ` ${num(o.executed_quantity, 0, 2)} un`
+                        ? t(" {{qtd}} un", { qtd: num(o.executed_quantity, 0, 2) })
                         : ""}
                     </span>
                   </span>
                   <span className={`val num ${o.side === "bid" ? "up" : "down"}`}>
-                    {brl(o.price)}
+                    {money(o.price)}
                   </span>
                   <span className="when">{timeAgo(o.created_at)}</span>
                 </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 
-import { brl, num } from "../api";
+import { money, num } from "../api";
 
 /**
  * Indústria: as produtoras (clicker de estoque).
@@ -14,6 +15,7 @@ import { brl, num } from "../api";
  * de tempo (o polling de 4s re-sincroniza sozinho).
  */
 export default function Producers({ estado, me, onComprar, onProduzir, onMelhorar }) {
+  const { t } = useTranslation();
   const [agora, setAgora] = useState(() => Date.now() / 1000);
   const [floater, setFloater] = useState(null); // "+3 ☃️" do último clique
   const [enviando, setEnviando] = useState(null); // id em voo (anti double-tap)
@@ -28,8 +30,8 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
   // O floater some sozinho.
   useEffect(() => {
     if (!floater) return;
-    const t = setTimeout(() => setFloater(null), 1100);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setFloater(null), 1100);
+    return () => clearTimeout(timer);
   }, [floater]);
 
   const minhas = estado?.minhas || [];
@@ -46,7 +48,7 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
       <section className="section">
         <div className="empty">
           <span className="big">🏭</span>
-          Carregando as indústrias…
+          {t("Carregando as indústrias…")}
         </div>
       </section>
     );
@@ -123,12 +125,23 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
     const bloqueado = cd > 0 || capAlcancado || semEnergia || congelada || parada;
     const podeMelhorar = p.custo_melhoria != null && !parada;
 
-    let motivo = `lote ${p.lote_min}–${p.lote_max} un · insumo ≈ ${brl(p.custo_insumo_unidade)}/un`;
-    if (parada) motivo = `💸 inadimplente — dívida ${brl(p.divida)}`;
-    else if (congelada) motivo = "🧊 commodity congelada pelo admin";
-    else if (capAlcancado) motivo = `📦 cap do dia (${num(p.cap_diario, 0)} un) — dia vira em ${fmtMMSS(p.dia_vence_em - agora)}`;
-    else if (semEnergia) motivo = `⚡ sem energia — recarrega em ${fmtMMSS((p.proxima_energia_em || agora) - agora)}`;
-    else if (cd > 0) motivo = `⏳ descansando ${cd.toFixed(1)}s`;
+    let motivo = t("lote {{a}}–{{b}} un · insumo ≈ {{c}}/un", {
+      a: p.lote_min,
+      b: p.lote_max,
+      c: money(p.custo_insumo_unidade),
+    });
+    if (parada) motivo = t("💸 inadimplente — dívida {{v}}", { v: money(p.divida) });
+    else if (congelada) motivo = t("🧊 commodity congelada pelo admin");
+    else if (capAlcancado)
+      motivo = t("📦 cap do dia ({{v}} un) — dia vira em {{t}}", {
+        v: num(p.cap_diario, 0),
+        t: fmtMMSS(p.dia_vence_em - agora),
+      });
+    else if (semEnergia)
+      motivo = t("⚡ sem energia — recarrega em {{t}}", {
+        t: fmtMMSS((p.proxima_energia_em || agora) - agora),
+      });
+    else if (cd > 0) motivo = t("⏳ descansando {{v}}s", { v: cd.toFixed(1) });
 
     return (
       <div className="prod-card" key={p.id}>
@@ -136,20 +149,25 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
           <span className="prod-ico">{p.emoji}</span>
           <span className="grow">
             <span className="prod-nome">
-              {p.nome} <span className="badge open">nv {p.nivel}</span>
+              {t(p.nome)} <span className="badge open">{t("nv {{n}}", { n: p.nivel })}</span>
             </span>
             <span className="prod-sub num">
-              {p.name} · manutenção {brl(p.manutencao_dia)}/dia · dia vira em{" "}
-              {fmtMMSS(p.dia_vence_em - agora)}
+              {t("{{nome}} · manutenção {{man}}/dia · dia vira em {{t}}", {
+                nome: t(p.name),
+                man: money(p.manutencao_dia),
+                t: fmtMMSS(p.dia_vence_em - agora),
+              })}
             </span>
           </span>
         </div>
 
         {parada && (
           <div className="warn">
-            💸 Parada por falta de saldo: dívida de <b>{brl(p.divida)}</b> (não
-            compõe). Assim que o saldo cobrir, a próxima varredura quita e
-            reativa sozinha.
+            <Trans
+              i18nKey="💸 Parada por falta de saldo: dívida de <b>{{divida}}</b> (não compõe). Assim que o saldo cobrir, a próxima varredura quita e reativa sozinha."
+              values={{ divida: money(p.divida) }}
+              components={{ b: <b /> }}
+            />
           </div>
         )}
 
@@ -164,7 +182,10 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
             </div>
           </div>
           <div className="prod-bar-line">
-            <span>📦 {num(p.producao_dia, 0, 1)}/{num(p.cap_diario, 0, 0)} hoje</span>
+            <span>
+              📦 {num(p.producao_dia, 0, 1)}/{num(p.cap_diario, 0, 0)}{" "}
+              {t("hoje")}
+            </span>
             <div className="prod-bar">
               <i className="cap" style={{ width: `${pctCap}%` }} />
             </div>
@@ -185,7 +206,7 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
               onClick={() => produzir(p)}
             >
               <span className="ico">{p.emoji}</span>
-              <span>PRODUZIR</span>
+              <span>{t("PRODUZIR")}</span>
             </button>
           </div>
 
@@ -194,7 +215,7 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
               <b className={floater.jp ? "jp" : ""}>
                 +{num(floater.un, 0, 0)} {floater.emoji}
               </b>
-              <span>−{brl(floater.custo)} de insumo</span>
+              <span>{t("−{{v}} de insumo", { v: money(floater.custo) })}</span>
             </div>
           )}
         </div>
@@ -204,8 +225,11 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
         <div className="prod-actions">
           <span className="hint">
             {p.nivel >= p.nivel_max
-              ? "nível máximo"
-              : `próx. nível: lote até ${num(p.lote_max * (config.lote_nivel_fator || 1.5), 0, 1)} un · cap ${num(p.cap_diario * (config.cap_nivel_fator || 1.5), 0, 0)}`}
+              ? t("nível máximo")
+              : t("próx. nível: lote até {{lote}} un · cap {{cap}}", {
+                  lote: num(p.lote_max * (config.lote_nivel_fator || 1.5), 0, 1),
+                  cap: num(p.cap_diario * (config.cap_nivel_fator || 1.5), 0, 0),
+                })}
           </span>
           <button
             className="btn btn-ghost btn-sm"
@@ -213,8 +237,8 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
             onClick={() => emVoo(p.id, () => onMelhorar(p.id))}
           >
             {p.custo_melhoria == null
-              ? "máx ✨"
-              : `⬆ melhorar ${brl(p.custo_melhoria)}`}
+              ? t("máx ✨")
+              : t("⬆ melhorar {{v}}", { v: money(p.custo_melhoria) })}
           </button>
         </div>
       </div>
@@ -229,10 +253,15 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
         <div className="prod-head">
           <span className="prod-ico">{c.emoji}</span>
           <span className="grow">
-            <span className="prod-nome">{c.nome}</span>
+            <span className="prod-nome">{t(c.nome)}</span>
             <span className="prod-sub num">
-              {c.name} · nominal {brl(c.base_price)} · custo diário ~
-              {brl(c.custo_compra * (config.manutencao_fracao || 0.05))}/dia
+              {t("{{nome}} · nominal {{nom}} · custo diário ~{{dia}}/dia", {
+                nome: t(c.name),
+                nom: money(c.base_price),
+                dia: money(
+                  c.custo_compra * (config.manutencao_fracao || 0.05),
+                ),
+              })}
             </span>
           </span>
         </div>
@@ -242,10 +271,12 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
           onClick={() => emVoo(c.commodity_id, () => onComprar(c.commodity_id))}
         >
           {c.congelada
-            ? "congelada 🧊"
+            ? t("congelada 🧊")
             : pode
-              ? `comprar por ${brl(c.custo_compra)}`
-              : `faltam ${brl(c.custo_compra - Number(me?.balance || 0))}`}
+              ? t("comprar por {{v}}", { v: money(c.custo_compra) })
+              : t("faltam {{v}}", {
+                  v: money(c.custo_compra - Number(me?.balance || 0)),
+                })}
         </button>
       </div>
     );
@@ -257,9 +288,9 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
     <>
       <section className="section">
         <div className="section-title">
-          <h2>🏭 Minhas produtoras</h2>
+          <h2>{t("🏭 Minhas produtoras")}</h2>
           <span className="hint">
-            clique = lote · cobra insumo · cap por dia
+            {t("clique = lote · cobra insumo · cap por dia")}
           </span>
         </div>
         <div className="prod-grid">
@@ -269,9 +300,9 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
             <div className="card">
               <div className="empty">
                 <span className="big">🧰</span>
-                Você ainda não tem nenhuma produtora.
+                {t("Você ainda não tem nenhuma produtora.")}
                 <br />
-                Compre uma abaixo e clique pra produzir estoque.
+                {t("Compre uma abaixo e clique pra produzir estoque.")}
               </div>
             </div>
           )}
@@ -280,8 +311,8 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
 
       <section className="section">
         <div className="section-title">
-          <h2>Compra</h2>
-          <span className="hint">uma por commodity · progressão 1..5</span>
+          <h2>{t("Compra")}</h2>
+          <span className="hint">{t("uma por commodity · progressão 1..5")}</span>
         </div>
         <div className="prod-grid">
           {compraveis.length ? (
@@ -290,7 +321,7 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
             <div className="card">
               <div className="empty">
                 <span className="big">✅</span>
-                Você já tem produtora de todas as commodities.
+                {t("Você já tem produtora de todas as commodities.")}
               </div>
             </div>
           )}
@@ -299,16 +330,57 @@ export default function Producers({ estado, me, onComprar, onProduzir, onMelhora
 
       <section className="section">
         <div className="section-title">
-          <h2>Como funciona</h2>
-          <span className="hint">4 travas de propósito</span>
+          <h2>{t("Como funciona")}</h2>
+          <span className="hint">{t("4 travas de propósito")}</span>
         </div>
         <div className="card">
           <div className="prod-regras num">
-            <div>1️⃣ <b>Insumo:</b> cada clique custa ~{num((config.insumo_fracao || 0.8) * 100, 0, 0)}% do preço nominal por unidade — margem bruta ~{num(100 - (config.insumo_fracao || 0.8) * 100, 0, 0)}%. Se o mercado saturar e o preço cair, produzir vira prejuízo.</div>
-            <div>2️⃣ <b>Energia:</b> rajada de {num((config.energia_max || 100) / (config.energia_por_clique || 20), 0, 0)} cliques, depois o ritmo é a regeneração.</div>
-            <div>3️⃣ <b>Cap diário:</b> o teto chega antes da paciência — o dia de jogo vira e zera.</div>
-            <div>4️⃣ <b>Manutenção:</b> ocioso também paga; sem saldo a produtora PARA até a dívida ser quitada.</div>
-            <div>🍀 <b>Boa safra:</b> {num((config.jackpot_chance || 0.05) * 100, 0, 0)}% de chance o lote sair ×{num(config.jackpot_fator || 3, 0, 0)}.</div>
+            <div>
+              <Trans
+                i18nKey="1️⃣ <b>Insumo:</b> cada clique custa ~{{custo}}% do preço nominal por unidade — margem bruta ~{{margem}}%. Se o mercado saturar e o preço cair, produzir vira prejuízo."
+                values={{
+                  custo: num((config.insumo_fracao || 0.8) * 100, 0, 0),
+                  margem: num(100 - (config.insumo_fracao || 0.8) * 100, 0, 0),
+                }}
+                components={{ b: <b /> }}
+              />
+            </div>
+            <div>
+              <Trans
+                i18nKey="2️⃣ <b>Energia:</b> rajada de {{n}} cliques, depois o ritmo é a regeneração."
+                values={{
+                  n: num(
+                    (config.energia_max || 100) /
+                      (config.energia_por_clique || 20),
+                    0,
+                    0,
+                  ),
+                }}
+                components={{ b: <b /> }}
+              />
+            </div>
+            <div>
+              <Trans
+                i18nKey="3️⃣ <b>Cap diário:</b> o teto chega antes da paciência — o dia de jogo vira e zera."
+                components={{ b: <b /> }}
+              />
+            </div>
+            <div>
+              <Trans
+                i18nKey="4️⃣ <b>Manutenção:</b> ocioso também paga; sem saldo a produtora PARA até a dívida ser quitada."
+                components={{ b: <b /> }}
+              />
+            </div>
+            <div>
+              <Trans
+                i18nKey="🍀 <b>Boa safra:</b> {{chance}}% de chance o lote sair ×{{fator}}."
+                values={{
+                  chance: num((config.jackpot_chance || 0.05) * 100, 0, 0),
+                  fator: num(config.jackpot_fator || 3, 0, 0),
+                }}
+                components={{ b: <b /> }}
+              />
+            </div>
           </div>
         </div>
       </section>

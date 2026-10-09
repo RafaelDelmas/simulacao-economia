@@ -1,3 +1,7 @@
+// Instância global do i18n: este módulo não é um componente React, então fora
+// do `useTranslation()` a tradução é `i18n.t(...)` direto (timeAgo, regime).
+import i18n, { localeAtual, moedaAtual } from "./i18n/index.js";
+
 const API = "/api";
 
 /**
@@ -10,14 +14,18 @@ export const MAX_ORDENS_ABERTAS = 10;
 
 /**
  * Humor do mercado (backend: `app/core/market/regimes.py`). O backend manda o
- * id cru no `regime` da commodity; este mapa é o rótulo pro chip no card.
+ * id cru no `regime` da commodity; este rótulo é pro chip no card.
+ * Função (não objeto) pra reagir à troca de idioma.
  */
-export const REGIME_LABEL = {
-  calmo: "😐 calmo",
-  alta: "📈 alta",
-  euforia: "🔥 euforia",
-  correcao: "📉 correção",
-};
+export function regimeLabel(regime) {
+  const mapa = {
+    calmo: "😐 calmo",
+    alta: "📈 alta",
+    euforia: "🔥 euforia",
+    correcao: "📉 correção",
+  };
+  return mapa[regime] ? i18n.t(mapa[regime]) : regime;
+}
 
 export function getToken() {
   return localStorage.getItem("token");
@@ -62,20 +70,75 @@ export async function api(path, options = {}) {
   return res;
 }
 
-/** Parse de erro da API ({"detail": "..."}) com fallback. */
+/** Parse de erro da API ({"detail": "...", "code", "params"}) com fallback. */
+export class ApiError extends Error {
+  constructor(message, code = null, params = null) {
+    super(message);
+    this.code = code; // chave estável de tradução (mensagens dinâmicas)
+    this.params = params; // valores interpolados da mensagem
+  }
+}
+
 export async function errorOf(res, fallback) {
   try {
     const data = await res.json();
-    return data.detail || fallback;
+    // Só string: validação do FastAPI devolve `detail` como lista (422).
+    if (typeof data.detail === "string") {
+      return new ApiError(data.detail, data.code, data.params);
+    }
+    return new ApiError(fallback);
   } catch {
-    return fallback;
+    return new ApiError(fallback);
   }
+}
+
+/**
+ * Mensagem de erro traduzida, na ordem:
+ * 1. `code` + `params` do backend (mensagens dinâmicas — a tradução monta
+ *    o texto com os valores, o `detail` PT fica como `defaultValue`);
+ * 2. o `detail` PT como chave (textos estáticos não têm code — e como a chave
+ *    É o texto, sem tradução ele volta em PT sozinho);
+ * 3. o fallback do call site.
+ * Parâmetros string (nomes de commodity) passam por `t()` também — assim
+ * "Carvão" vira "Coal" dentro da própria mensagem de erro.
+ */
+export function erroTraduzido(t, e, padrao) {
+  if (e instanceof ApiError && e.code) {
+    return t(e.code, { ...traduzParams(t, e.params), defaultValue: e.message });
+  }
+  if (e && typeof e.message === "string" && e.message) return t(e.message);
+  return t(padrao);
+}
+
+/** Params do backend → valores prontos: strings e listas de strings (nomes)
+ * passam por `t()`; o resto (números) vai cru. */
+function traduzParams(t, params) {
+  const out = {};
+  for (const [k, v] of Object.entries(params || {})) {
+    if (typeof v === "string") out[k] = t(v);
+    else if (Array.isArray(v))
+      out[k] = v.map((x) => (typeof x === "string" ? t(x) : x)).join(", ");
+    else out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * `detail` de sucesso da API traduzido (toasts do admin): usa `code`/`params`
+ * quando o backend mandou (detalhe dinâmico), senão o `detail` PT como chave.
+ */
+export function traduzDetalhe(t, r) {
+  if (!r) return "";
+  if (r.code) {
+    return t(r.code, { ...traduzParams(t, r.params), defaultValue: r.detail });
+  }
+  return r.detail ? t(r.detail) : "";
 }
 
 /** GET JSON: lança Error(message) quando a API responde com erro. */
 export async function getJSON(path) {
   const res = await api(path);
-  if (!res.ok) throw new Error(await errorOf(res, "Falha na API"));
+  if (!res.ok) throw await errorOf(res, "Falha na API");
   return res.json();
 }
 
@@ -85,7 +148,7 @@ export async function postJSON(path, body) {
     method: "POST",
     body: JSON.stringify(body ?? {}),
   });
-  if (!res.ok) throw new Error(await errorOf(res, "Falha na API"));
+  if (!res.ok) throw await errorOf(res, "Falha na API");
   return res.json();
 }
 
@@ -95,28 +158,32 @@ export async function patchJSON(path, body) {
     method: "PATCH",
     body: JSON.stringify(body ?? {}),
   });
-  if (!res.ok) throw new Error(await errorOf(res, "Falha na API"));
+  if (!res.ok) throw await errorOf(res, "Falha na API");
   return res.json();
 }
 
 /** DELETE com o mesmo contrato do getJSON (204 vira null). */
 export async function delJSON(path) {
   const res = await api(path, { method: "DELETE" });
-  if (!res.ok) throw new Error(await errorOf(res, "Falha na API"));
+  if (!res.ok) throw await errorOf(res, "Falha na API");
   return res.status === 204 ? null : res.json();
 }
 
 /* ------------------------------------------------------------------ formatação */
 
-export const brl = (v) =>
-  Number(v || 0).toLocaleString("pt-BR", {
+/**
+ * Dinheiro: mesmo valor sempre (a simulação não tem câmbio — 1:1, só o
+ * símbolo muda: R$ 45,08 → £45.08 no idioma EN).
+ */
+export const money = (v) =>
+  Number(v || 0).toLocaleString(localeAtual(), {
     style: "currency",
-    currency: "BRL",
+    currency: moedaAtual(),
   });
 
-/** Número com casas decimais mínimas/máximas em pt-BR (sem símbolo). */
+/** Número com casas decimais mínimas/máximas no locale ativo (sem símbolo). */
 export const num = (v, min = 2, max = min) =>
-  Number(v || 0).toLocaleString("pt-BR", {
+  Number(v || 0).toLocaleString(localeAtual(), {
     minimumFractionDigits: min,
     maximumFractionDigits: max,
   });
@@ -129,10 +196,10 @@ export const pct = (v) => `${Number(v || 0) >= 0 ? "+" : ""}${num(v, 2)}%`;
 export function timeAgo(iso) {
   if (!iso) return "";
   const seg = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (seg < 60) return "agora";
-  if (seg < 3600) return `há ${Math.floor(seg / 60)}min`;
-  if (seg < 86400) return `há ${Math.floor(seg / 3600)}h`;
-  return `há ${Math.floor(seg / 86400)}d`;
+  if (seg < 60) return i18n.t("agora");
+  if (seg < 3600) return i18n.t("há {{n}}min", { n: Math.floor(seg / 60) });
+  if (seg < 86400) return i18n.t("há {{n}}h", { n: Math.floor(seg / 3600) });
+  return i18n.t("há {{n}}d", { n: Math.floor(seg / 86400) });
 }
 
 /** Emoji do commodity (o mundo simulado fica com cara de mundo mesmo). */

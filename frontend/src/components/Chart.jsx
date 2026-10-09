@@ -4,6 +4,9 @@
  *
  * Pontos: [{ t: Date|number, p: number }]
  */
+import { useTranslation } from "react-i18next";
+
+import { localeAtual } from "../i18n/index.js";
 
 function escala(points, w, h, padY) {
   if (!points || points.length < 2) return null;
@@ -37,6 +40,7 @@ function escala(points, w, h, padY) {
 
 /** Minigráfico dentro do card do commodity. */
 export function Sparkline({ points, up = 0, height = 34 }) {
+  const { t } = useTranslation();
   const W = 120;
   const H = height;
   const esc = escala(points || [], W, H, 3);
@@ -44,7 +48,7 @@ export function Sparkline({ points, up = 0, height = 34 }) {
   if (!esc) {
     return (
       <div className="chart-empty" style={{ height: H }}>
-        coletando…
+        {t("coletando…")}
       </div>
     );
   }
@@ -59,7 +63,7 @@ export function Sparkline({ points, up = 0, height = 34 }) {
         height={H}
         preserveAspectRatio="none"
         role="img"
-        aria-label="evolução do preço"
+        aria-label={t("evolução do preço")}
       >
         <path
           d={`${esc.d} L${W},${H} L0,${H} Z`}
@@ -91,16 +95,18 @@ export function Sparkline({ points, up = 0, height = 34 }) {
 
 /** Gráfico grande da tela do commodity. */
 export function PriceChart({ points, height = 168, cor = "#f2c14e" }) {
+  const { t } = useTranslation();
   const W = 320;
   const H = height;
   const esc = escala(points || [], W, H, 12);
+  const loc = localeAtual();
 
   if (!esc) {
     return (
       <div className="chart-empty" style={{ height: H }}>
         <span>
           <span className="live-dot" />
-          coletando histórico de preços…
+          {t("coletando histórico de preços…")}
         </span>
       </div>
     );
@@ -121,7 +127,7 @@ export function PriceChart({ points, height = 168, cor = "#f2c14e" }) {
           height={H}
           preserveAspectRatio="none"
           role="img"
-          aria-label="gráfico de preço"
+          aria-label={t("gráfico de preço")}
         >
           <defs>
             <linearGradient id={`fill-${cor.slice(1)}`} x1="0" y1="0" x2="0" y2="1">
@@ -171,18 +177,18 @@ export function PriceChart({ points, height = 168, cor = "#f2c14e" }) {
 
       <div className="chart-meta num">
         <span>
-          mín {esc.min.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}
+          {t("mín")} {esc.min.toLocaleString(loc, { maximumFractionDigits: 2 })}
         </span>
         <span className={variacao > 0 ? "up" : variacao < 0 ? "down" : ""}>
-          {points.length} pontos ·{" "}
+          {t("{{n}} pontos ·", { n: points.length })}{" "}
           {variacao >= 0 ? "▲" : "▼"}{" "}
-          {Math.abs(variacao).toLocaleString("pt-BR", {
+          {Math.abs(variacao).toLocaleString(loc, {
             maximumFractionDigits: 2,
           })}
           %
         </span>
         <span>
-          máx {esc.max.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}
+          {t("máx")} {esc.max.toLocaleString(loc, { maximumFractionDigits: 2 })}
         </span>
       </div>
     </div>

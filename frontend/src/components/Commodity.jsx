@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
 
 import { PriceChart } from "./Chart";
-import { brl, iconFor, MAX_ORDENS_ABERTAS, num, pct, REGIME_LABEL, timeAgo } from "../api";
+import { iconFor, MAX_ORDENS_ABERTAS, money, num, pct, regimeLabel, timeAgo } from "../api";
 
 /** Distância máxima (sobre o preço alvo) pra uma ordem contar como "quase". */
 const QUASE_LIMITE = 0.02;
@@ -20,6 +21,7 @@ export default function Commodity({
   onBack,
   onOrder,
 }) {
+  const { t } = useTranslation();
   const [lado, setLado] = useState("bid");
   const [qtd, setQtd] = useState("1");
   const [manual, setManual] = useState("");
@@ -76,13 +78,13 @@ export default function Commodity({
       if (melhorBid == null || o.price <= melhorBid) return [];
       const falta = o.price - melhorBid;
       return falta / Math.max(o.price, 0.01) <= QUASE_LIMITE
-        ? [{ o, falta, alvo: melhorBid, lado: "melhor compra" }]
+        ? [{ o, falta, alvo: melhorBid, lado: t("melhor compra") }]
         : [];
     }
     if (melhorAsk == null || o.price >= melhorAsk) return [];
     const falta = melhorAsk - o.price;
     return falta / Math.max(melhorAsk, 0.01) <= QUASE_LIMITE
-      ? [{ o, falta, alvo: melhorAsk, lado: "melhor venda" }]
+      ? [{ o, falta, alvo: melhorAsk, lado: t("melhor venda") }]
       : [];
   });
 
@@ -128,30 +130,32 @@ export default function Commodity({
     <>
       <section className="section" style={{ paddingTop: 16 }}>
         <button className="back-btn" onClick={onBack}>
-          ‹ voltar ao mercado
+          ‹ {t("voltar ao mercado")}
         </button>
 
         <div className="detail-head">
           <span className="icon">{iconFor(commodity.name)}</span>
           <div style={{ minWidth: 0 }}>
-            <h1>{commodity.name}</h1>
+            <h1>{t(commodity.name)}</h1>
             {commodity.description && (
-              <div className="desc">{commodity.description}</div>
+              <div className="desc">{t(commodity.description)}</div>
             )}
           </div>
         </div>
 
         <div className="detail-price">
-          <span className="now num">{brl(commodity.current_price)}</span>
+          <span className="now num">{money(commodity.current_price)}</span>
           <span className={`pill ${varia >= 0 ? "up" : "down"}`}>
             {pct(varia)}
           </span>
           {commodity.regime && commodity.regime !== "calmo" && (
             <span className={`badge regime ${commodity.regime}`}>
-              {REGIME_LABEL[commodity.regime] || commodity.regime}
+              {regimeLabel(commodity.regime)}
             </span>
           )}
-          {commodity.is_frozen && <span className="badge off">suspenso</span>}
+          {commodity.is_frozen && (
+            <span className="badge off">{t("suspenso")}</span>
+          )}
         </div>
 
         <div className="card">
@@ -161,23 +165,23 @@ export default function Commodity({
 
       <section className="section">
         <div className="section-title">
-          <h2>Livro de ofertas</h2>
+          <h2>{t("Livro de ofertas")}</h2>
           <span className="hint">
             <span className="live-dot" />
-            ao vivo
+            {t("ao vivo")}
           </span>
         </div>
 
         <div className="card">
           <div className="book">
             <div className="book-head">
-              <span>preço</span>
-              <span>quantidade</span>
-              <span style={{ textAlign: "right" }}>ordens</span>
+              <span>{t("preço")}</span>
+              <span>{t("quantidade")}</span>
+              <span style={{ textAlign: "right" }}>{t("ordens")}</span>
             </div>
 
             {asks.length === 0 && bids.length === 0 ? (
-              <div className="book-empty">Book vazio neste instante…</div>
+              <div className="book-empty">{t("Book vazio neste instante…")}</div>
             ) : (
               <>
                 {asks.map((n) => (
@@ -188,7 +192,7 @@ export default function Commodity({
                         width: `${(n.quantity / maiorVolume) * 100}%`,
                       }}
                     />
-                    <span className="price num">{brl(n.price)}</span>
+                    <span className="price num">{money(n.price)}</span>
                     <span className="qty num">{num(n.quantity, 0, 3)}</span>
                     <span className="orders num">{n.orders}</span>
                   </div>
@@ -196,19 +200,20 @@ export default function Commodity({
 
                 <div className="book-spread">
                   <span>
-                    melhor venda <b className="num">{melhorAsk ? brl(melhorAsk) : "—"}</b>
+                    {t("melhor venda")}{" "}
+                    <b className="num">{melhorAsk ? money(melhorAsk) : "—"}</b>
                   </span>
                   <span>
                     spread{" "}
                     <b className="num">
                       {book?.spread != null && book.spread >= 0
-                        ? brl(book.spread)
+                        ? money(book.spread)
                         : "—"}
                     </b>
                   </span>
                   <span>
-                    melhor compra{" "}
-                    <b className="num">{melhorBid ? brl(melhorBid) : "—"}</b>
+                    {t("melhor compra")}{" "}
+                    <b className="num">{melhorBid ? money(melhorBid) : "—"}</b>
                   </span>
                 </div>
 
@@ -220,7 +225,7 @@ export default function Commodity({
                         width: `${(n.quantity / maiorVolume) * 100}%`,
                       }}
                     />
-                    <span className="price num">{brl(n.price)}</span>
+                    <span className="price num">{money(n.price)}</span>
                     <span className="qty num">{num(n.quantity, 0, 3)}</span>
                     <span className="orders num">{n.orders}</span>
                   </div>
@@ -233,14 +238,14 @@ export default function Commodity({
 
       <section className="section">
         <div className="section-title">
-          <h2>Negociar</h2>
-          <span className="hint">balcão do jogador</span>
+          <h2>{t("Negociar")}</h2>
+          <span className="hint">{t("balcão do jogador")}</span>
         </div>
 
         <div className="card">
           {commodity.is_frozen && (
             <div className="warn">
-              🧊 Mercado suspenso pelo admin — sem ordem nova até reabrir.
+              {t("🧊 Mercado suspenso pelo admin — sem ordem nova até reabrir.")}
             </div>
           )}
           <div className="seg">
@@ -248,39 +253,43 @@ export default function Commodity({
               className={lado === "bid" ? "on-buy" : ""}
               onClick={() => setLado("bid")}
             >
-              Comprar
+              {t("Comprar")}
             </button>
             <button
               className={lado === "ask" ? "on-sell" : ""}
               onClick={() => setLado("ask")}
             >
-              Vender
+              {t("Vender")}
             </button>
           </div>
 
           <div className="you-own">
             <span>
-              seu estoque: <b className="num">{num(estoque, 0, 3)} un</b>
+              {t("seu estoque:")}{" "}
+              <b className="num">
+                {num(estoque, 0, 3)} {t("un")}
+              </b>
             </span>
             {position && position.quantity > 0 && (
               <span>
-                média <b className="num">{brl(position.avg_price)}</b>
+                {t("média")}{" "}
+                <b className="num">{money(position.avg_price)}</b>
               </span>
             )}
             <span>
-              saldo <b className="num">{brl(saldo)}</b>
+              {t("saldo")} <b className="num">{money(saldo)}</b>
             </span>
           </div>
 
           <div className="field">
             <label>
-              <span>Quantidade</span>
+              <span>{t("Quantidade")}</span>
               <span className="num">
-                {maximo > 0 ? `máx ${num(maximo, 0, 0)}` : ""}
+                {maximo > 0 ? t("máx {{n}}", { n: num(maximo, 0, 0) }) : ""}
               </span>
             </label>
             <div className="stepper">
-              <button type="button" onClick={() => ajustar(-1)} aria-label="menos">
+              <button type="button" onClick={() => ajustar(-1)} aria-label={t("menos")}>
                 −
               </button>
               <input
@@ -291,7 +300,7 @@ export default function Commodity({
                 value={qtd}
                 onChange={(e) => setQtd(e.target.value)}
               />
-              <button type="button" onClick={() => ajustar(1)} aria-label="mais">
+              <button type="button" onClick={() => ajustar(1)} aria-label={t("mais")}>
                 +
               </button>
             </div>
@@ -310,7 +319,7 @@ export default function Commodity({
                   className={`chip ${quantidade === maximo ? "on" : ""}`}
                   onClick={() => setQtd(String(maximo))}
                 >
-                  tudo ({num(maximo, 0, 0)})
+                  {t("tudo ({{n}})", { n: num(maximo, 0, 0) })}
                 </button>
               )}
             </div>
@@ -318,9 +327,9 @@ export default function Commodity({
 
           <div className="field">
             <label>
-              <span>Preço por unidade</span>
+              <span>{t("Preço por unidade")}</span>
               <span className="num">
-                {auto ? "seguindo o book" : "manual"}
+                {auto ? t("seguindo o book") : t("manual")}
               </span>
             </label>
             <input
@@ -339,7 +348,7 @@ export default function Commodity({
                 className={`chip ${auto ? "on" : ""}`}
                 onClick={() => setAuto(true)}
               >
-                melhor preço
+                {t("melhor preço")}
               </button>
               {melhorAsk && (
                 <button
@@ -349,7 +358,7 @@ export default function Commodity({
                     setAuto(false);
                   }}
                 >
-                  venda {brl(melhorAsk)}
+                  {t("venda {{v}}", { v: money(melhorAsk) })}
                 </button>
               )}
               {melhorBid && (
@@ -360,38 +369,56 @@ export default function Commodity({
                     setAuto(false);
                   }}
                 >
-                  compra {brl(melhorBid)}
+                  {t("compra {{v}}", { v: money(melhorBid) })}
                 </button>
               )}
             </div>
           </div>
 
           <div className="estimate">
-            <span>{ehCompra ? "Você vai pagar" : "Você vai receber"}</span>
-            <b className="num">{brl(custo)}</b>
+            <span>
+              {ehCompra ? t("Você vai pagar") : t("Você vai receber")}
+            </span>
+            <b className="num">{money(custo)}</b>
           </div>
 
           {semSaldo && (
             <div className="warn">
-              Saldo insuficiente — livre {brl(saldoLivre)}, faltam{" "}
-              {brl(custo - saldoLivre)}.
+              {t("Saldo insuficiente — livre {{livre}}, faltam {{falta}}.", {
+                livre: money(saldoLivre),
+                falta: money(custo - saldoLivre),
+              })}
               {saldoComprometido > 1e-9 && (
-                <> ({brl(saldoComprometido)} já em compras abertas)</>
+                <>
+                  {" "}
+                  {t("({{v}} já em compras abertas)", {
+                    v: money(saldoComprometido),
+                  })}
+                </>
               )}
             </div>
           )}
           {semEstoque && (
             <div className="warn">
-              Só tem {num(estoqueLivre, 0, 3)} un livre de {commodity.name}.
+              {t("Só tem {{qtd}} un livre de {{nome}}.", {
+                qtd: num(estoqueLivre, 0, 3),
+                nome: t(commodity.name),
+              })}
               {estoqueComprometido > 1e-9 && (
-                <> ({num(estoqueComprometido, 0, 3)} un em vendas abertas)</>
+                <>
+                  {" "}
+                  {t("({{qtd}} un em vendas abertas)", {
+                    qtd: num(estoqueComprometido, 0, 3),
+                  })}
+                </>
               )}
             </div>
           )}
           {noLimite && (
             <div className="warn">
-              🔒 Você já tem {MAX_ORDENS_ABERTAS} ordens abertas — cancele uma
-              na carteira antes de enviar outra.
+              {t("🔒 Você já tem {{n}} ordens abertas — cancele uma na carteira antes de enviar outra.", {
+                n: MAX_ORDENS_ABERTAS,
+              })}
             </div>
           )}
 
@@ -409,40 +436,56 @@ export default function Commodity({
             onClick={enviar}
           >
             {enviando
-              ? "Enviando…"
+              ? t("Enviando…")
               : commodity.is_frozen
-                ? "Mercado suspenso"
+                ? t("Mercado suspenso")
                 : noLimite
-                  ? `Limite de ${MAX_ORDENS_ABERTAS} ordens atingido`
+                  ? t("Limite de {{n}} ordens atingido", { n: MAX_ORDENS_ABERTAS })
                   : ehCompra
-                    ? `Comprar ${num(quantidade, 0, 3)} de ${commodity.name}`
-                    : `Vender ${num(quantidade, 0, 3)} de ${commodity.name}`}
+                    ? t("Comprar {{qtd}} de {{nome}}", {
+                        qtd: num(quantidade, 0, 3),
+                        nome: t(commodity.name),
+                      })
+                    : t("Vender {{qtd}} de {{nome}}", {
+                        qtd: num(quantidade, 0, 3),
+                        nome: t(commodity.name),
+                      })}
           </button>
         </div>
       </section>
 
       <section className="section">
         <div className="section-title">
-          <h2>Suas ordens</h2>
-          <span className="hint">neste commodity</span>
+          <h2>{t("Suas ordens")}</h2>
+          <span className="hint">{t("neste commodity")}</span>
         </div>
 
         <div className="card">
           {abertas.length === 0 && executadas.length === 0 ? (
             <div className="empty">
               <span className="big">🗒️</span>
-              Você ainda não negociou {commodity.name}.
+              {t("Você ainda não negociou {{nome}}.", { nome: t(commodity.name) })}
               <br />
-              Coloque a primeira ordem acima.
+              {t("Coloque a primeira ordem acima.")}
             </div>
           ) : (
             <>
-              {quases.map(({ o, falta, alvo, lado }) => (
+              {quases.map(({ o, falta, alvo, lado: ladoQuase }) => (
                 <div className="quase" key={`q${o.id}`}>
-                  ⏳ <b>Quase!</b> sua {o.side === "ask" ? "venda" : "compra"} a{" "}
-                  <span className="num">{brl(o.price)}</span> faltou{" "}
-                  <b className="num">{brl(falta)}</b> para {lado} (
-                  <span className="num">{brl(alvo)}</span>).
+                  <Trans
+                    i18nKey="⏳ <b>Quase!</b> sua {{tipo}} a <num>{{preco}}</num> faltou <b>{{falta}}</b> para {{alvo}} (<num>{{meta}}</num>)."
+                    values={{
+                      tipo: o.side === "ask" ? t("venda") : t("compra"),
+                      preco: money(o.price),
+                      falta: money(falta),
+                      alvo: ladoQuase,
+                      meta: money(alvo),
+                    }}
+                    components={{
+                      b: <b />,
+                      num: <span className="num" />,
+                    }}
+                  />
                 </div>
               ))}
 
@@ -450,12 +493,15 @@ export default function Commodity({
                 <div className="list-row" key={o.id}>
                   <span className="grow">
                     <span className="title">
-                      {o.side === "bid" ? "🟢 Compra" : "🔴 Venda"}{" "}
-                      <span className="badge open">no book</span>
+                      {o.side === "bid" ? t("🟢 Compra") : t("🔴 Venda")}{" "}
+                      <span className="badge open">{t("no book")}</span>
                     </span>
                     <span className="sub num">
-                      restam {num(o.quantity, 0, 3)} un a {brl(o.price)} ·{" "}
-                      {timeAgo(o.created_at)}
+                      {t("restam {{qtd}} un a {{preco}}", {
+                        qtd: num(o.quantity, 0, 3),
+                        preco: money(o.price),
+                      })}{" "}
+                      · {timeAgo(o.created_at)}
                     </span>
                   </span>
                 </div>
@@ -465,11 +511,12 @@ export default function Commodity({
                 <div className="list-row" key={`f${o.id}`}>
                   <span className="grow">
                     <span className="title">
-                      {o.side === "bid" ? "Compra" : "Venda"}{" "}
-                      <span className="badge done">executada</span>
+                      {o.side === "bid" ? t("Compra") : t("Venda")}{" "}
+                      <span className="badge done">{t("executada")}</span>
                     </span>
                     <span className="sub num">
-                      a {brl(o.price)} · {timeAgo(o.created_at)}
+                      {t("a {{preco}}", { preco: money(o.price) })} ·{" "}
+                      {timeAgo(o.created_at)}
                     </span>
                   </span>
                 </div>

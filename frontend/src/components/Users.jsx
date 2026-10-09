@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
-  brl,
+  money,
   delJSON,
+  erroTraduzido,
   getJSON,
   getSession,
   patchJSON,
   postJSON,
   timeAgo,
+  traduzDetalhe,
 } from "../api";
 
 /**
@@ -16,6 +19,7 @@ import {
  * intervenção de mercado (componente irmão AdminMarket).
  */
 export default function Users({ onToast }) {
+  const { t } = useTranslation();
   const [usuarios, setUsuarios] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
@@ -40,11 +44,11 @@ export default function Users({ onToast }) {
     try {
       setUsuarios(await getJSON("/users"));
     } catch (e) {
-      setErro(e.message || "Falha ao listar usuários.");
+      setErro(erroTraduzido(t, e, "Falha ao listar usuários."));
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     carregar();
@@ -53,19 +57,19 @@ export default function Users({ onToast }) {
   // a confirmação de exclusão expira sozinha: toque perdido não apaga nada
   useEffect(() => {
     if (!confirmando) return;
-    const t = setTimeout(() => setConfirmando(null), 5000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setConfirmando(null), 5000);
+    return () => clearTimeout(timer);
   }, [confirmando]);
 
   async function criar(evento) {
     evento.preventDefault();
     const username = form.username.trim();
     if (username.length < 3) {
-      setErro("Usuário precisa de ao menos 3 caracteres.");
+      setErro(t("Usuário precisa de ao menos 3 caracteres."));
       return;
     }
     if (form.password.length < 4) {
-      setErro("Senha precisa de ao menos 4 caracteres.");
+      setErro(t("Senha precisa de ao menos 4 caracteres."));
       return;
     }
 
@@ -81,11 +85,11 @@ export default function Users({ onToast }) {
         body.balance = Number(form.balance);
       }
       const novo = await postJSON("/users", body);
-      onToast?.(`${novo.username} entrou no mercado 🎉`, "ok");
+      onToast?.(t("{{u}} entrou no mercado 🎉", { u: novo.username }), "ok");
       setForm({ username: "", password: "", is_admin: false, balance: "" });
       await carregar();
     } catch (e) {
-      setErro(e.message || "Não foi possível criar o usuário.");
+      setErro(erroTraduzido(t, e, "Não foi possível criar o usuário."));
     } finally {
       setCriando(false);
     }
@@ -96,15 +100,15 @@ export default function Users({ onToast }) {
     const bruto = String(valorSaldo).trim();
     const v = Number(bruto);
     if (bruto === "" || Number.isNaN(v)) {
-      onToast?.("Digite um valor primeiro.", "err");
+      onToast?.(t("Digite um valor primeiro."), "err");
       return;
     }
     if (modo === "definir" && v < 0) {
-      onToast?.("Saldo final não pode ser negativo.", "err");
+      onToast?.(t("Saldo final não pode ser negativo."), "err");
       return;
     }
     if (modo !== "definir" && v <= 0) {
-      onToast?.("O valor precisa ser maior que zero.", "err");
+      onToast?.(t("O valor precisa ser maior que zero."), "err");
       return;
     }
 
@@ -116,11 +120,20 @@ export default function Users({ onToast }) {
           ? { balance: v }
           : { delta: modo === "somar" ? v : -v };
       const atualizado = await patchJSON(`/users/${u.id}`, body);
-      onToast?.(`${u.username} agora tem ${brl(atualizado.balance)} 💰`, "ok");
+      onToast?.(
+        t("{{u}} agora tem {{v}} 💰", {
+          u: u.username,
+          v: money(atualizado.balance),
+        }),
+        "ok",
+      );
       setEditando(null);
       await carregar();
     } catch (e) {
-      onToast?.(e.message || "Não foi possível ajustar o saldo.", "err");
+      onToast?.(
+        erroTraduzido(t, e, "Não foi possível ajustar o saldo."),
+        "err",
+      );
     } finally {
       setOcupado(null);
     }
@@ -141,12 +154,18 @@ export default function Users({ onToast }) {
     try {
       const r = await delJSON(`/users/${u.id}`);
       onToast?.(
-        `${r.detail} (${r.ordens_canceladas} ordens canceladas)`,
+        t("{{detalhe}} ({{n}} ordens canceladas)", {
+          detalhe: traduzDetalhe(t, r),
+          n: r.ordens_canceladas,
+        }),
         "ok",
       );
       await carregar();
     } catch (e) {
-      onToast?.(e.message || "Não foi possível apagar o usuário.", "err");
+      onToast?.(
+        erroTraduzido(t, e, "Não foi possível apagar o usuário."),
+        "err",
+      );
     } finally {
       setOcupado(null);
       setConfirmando(null);
@@ -167,7 +186,7 @@ export default function Users({ onToast }) {
     <>
       <section className="section">
         <div className="section-title">
-          <h2>Criar jogador</h2>
+          <h2>{t("Criar jogador")}</h2>
           <span className="hint">admin</span>
         </div>
 
@@ -175,25 +194,25 @@ export default function Users({ onToast }) {
           {erro && <div className="error-box">{erro}</div>}
 
           <div className="field" style={{ margin: 0 }}>
-            <label htmlFor="novo-usuario">Usuário</label>
+            <label htmlFor="novo-usuario">{t("Usuário")}</label>
             <input
               id="novo-usuario"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              placeholder="ex.: maria"
+              placeholder={t("ex.: maria")}
               value={form.username}
               onChange={(e) => setForm({ ...form, username: e.target.value })}
             />
           </div>
 
           <div className="field" style={{ margin: 0 }}>
-            <label htmlFor="nova-senha">Senha</label>
+            <label htmlFor="nova-senha">{t("Senha")}</label>
             <input
               id="nova-senha"
               type="password"
               autoComplete="new-password"
-              placeholder="mínimo 4 caracteres"
+              placeholder={t("mínimo 4 caracteres")}
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
@@ -201,8 +220,8 @@ export default function Users({ onToast }) {
 
           <div className="field" style={{ margin: 0 }}>
             <label htmlFor="saldo-inicial">
-              <span>Saldo inicial</span>
-              <span>vazio = padrão do servidor</span>
+              <span>{t("Saldo inicial")}</span>
+              <span>{t("vazio = padrão do servidor")}</span>
             </label>
             <input
               id="saldo-inicial"
@@ -210,7 +229,7 @@ export default function Users({ onToast }) {
               inputMode="decimal"
               min="0"
               step="1"
-              placeholder="ex.: 1500"
+              placeholder={t("ex.: 1500")}
               value={form.balance}
               onChange={(e) => setForm({ ...form, balance: e.target.value })}
             />
@@ -222,30 +241,32 @@ export default function Users({ onToast }) {
               checked={form.is_admin}
               onChange={(e) => setForm({ ...form, is_admin: e.target.checked })}
             />
-            Também é admin
+            {t("Também é admin")}
           </label>
 
           <button className="btn btn-gold" type="submit" disabled={criando}>
-            {criando ? "Criando…" : "Criar jogador"}
+            {criando ? t("Criando…") : t("Criar jogador")}
           </button>
         </form>
       </section>
 
       <section className="section">
         <div className="section-title">
-          <h2>Quem está no jogo</h2>
-          <span className="hint">{usuarios.length} usuários</span>
+          <h2>{t("Quem está no jogo")}</h2>
+          <span className="hint">
+            {t("{{n}} usuários", { n: usuarios.length })}
+          </span>
         </div>
 
         <div className="card">
           {erro && usuarios.length === 0 && <div className="error-box">{erro}</div>}
 
           {carregando ? (
-            <div className="empty">Carregando…</div>
+            <div className="empty">{t("Carregando…")}</div>
           ) : usuarios.length === 0 ? (
             <div className="empty">
               <span className="big">🫥</span>
-              Nenhum usuário ainda.
+              {t("Nenhum usuário ainda.")}
             </div>
           ) : (
             usuarios.map((u) => (
@@ -255,13 +276,17 @@ export default function Users({ onToast }) {
                     <span className="title">
                       {u.username}
                       {u.is_admin && <span className="badge admin">admin</span>}
-                      {!u.is_active && <span className="badge off">inativo</span>}
+                      {!u.is_active && (
+                        <span className="badge off">{t("inativo")}</span>
+                      )}
                     </span>
-                    <span className="sub">entrou {timeAgo(u.created_at)}</span>
+                    <span className="sub">
+                      {t("entrou {{q}}", { q: timeAgo(u.created_at) })}
+                    </span>
                   </span>
                   <span className="right">
-                    <span className="big num">{brl(u.balance)}</span>
-                    <span className="small">saldo</span>
+                    <span className="big num">{money(u.balance)}</span>
+                    <span className="small">{t("saldo")}</span>
                   </span>
                 </div>
 
@@ -271,7 +296,7 @@ export default function Users({ onToast }) {
                     onClick={() => abrirSaldo(u)}
                     disabled={ocupado !== null}
                   >
-                    💰 saldo
+                    💰 {t("saldo")}
                   </button>
                   {u.id !== meuId && (
                     <button
@@ -281,7 +306,9 @@ export default function Users({ onToast }) {
                       onClick={() => toqueApagar(u)}
                       disabled={ocupado !== null}
                     >
-                      {confirmando === u.id ? "apagar mesmo?" : "🗑️ apagar"}
+                      {confirmando === u.id
+                        ? t("apagar mesmo?")
+                        : t("🗑️ apagar")}
                     </button>
                   )}
                 </div>
@@ -292,7 +319,9 @@ export default function Users({ onToast }) {
                       type="number"
                       inputMode="decimal"
                       step="0.01"
-                      placeholder={`ex.: ${Math.round(u.balance)}`}
+                      placeholder={t("ex.: {{v}}", {
+                        v: Math.round(u.balance),
+                      })}
                       value={valorSaldo}
                       autoFocus
                       onChange={(e) => setValorSaldo(e.target.value)}
@@ -305,21 +334,21 @@ export default function Users({ onToast }) {
                       disabled={ocupado !== null}
                       onClick={() => ajustarSaldo(u, "somar")}
                     >
-                      + dar
+                      + {t("dar")}
                     </button>
                     <button
                       className="chip"
                       disabled={ocupado !== null}
                       onClick={() => ajustarSaldo(u, "subtrair")}
                     >
-                      − tirar
+                      − {t("tirar")}
                     </button>
                     <button
                       className="chip on"
                       disabled={ocupado !== null}
                       onClick={() => ajustarSaldo(u, "definir")}
                     >
-                      definir
+                      {t("definir")}
                     </button>
                   </div>
                 )}
