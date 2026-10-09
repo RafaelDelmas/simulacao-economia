@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 # ---- etapa 2: imagem final ----
 FROM python:3.12-slim
-COPY produtoras.json /app/produtoras.json
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
@@ -17,5 +17,5 @@ COPY --from=builder /install /usr/local
 COPY . .
 
 EXPOSE 3100
-
+COPY produtoras.json /app/produtoras.json
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3100"]
